@@ -43,11 +43,22 @@ question_prompts = {
 }
 
 STUDY_SUMMARY = """
-This clinical research study focuses on individuals who experienced a traumatic brain injury (TBI) at least one year ago. 
-It is run by Kessler Foundation in East Hanover, NJ. Participants will take part in in-person visits that include supervised 
-exercise sessions, memory testing, and MRI brain scans. You must be 18 or older, have memory difficulties, be able to exercise, 
-speak and read English fluently, and be willing to undergo an MRI. The goal is to better understand how exercise affects memory 
-and brain function in those with a history of TBI.
+This clinical research study is led by Kessler Foundation in East Hanover, New Jersey. It aims to understand how exercise may improve memory and brain function in individuals with a history of moderate to severe traumatic brain injury (TBI).
+
+To qualify, participants must:
+- Be age 18 or older
+- Have experienced a moderate to severe TBI at least one year ago
+- Be experiencing persistent memory issues
+- Be fluent in English
+- Be physically able and willing to exercise
+- Be able to undergo MRI brain scans
+- Live within 50 miles of East Hanover, NJ
+
+Participants will attend in-person visits, complete memory tests, undergo MRI scans, and engage in supervised exercise sessions.
+
+Compensation is provided for time and transportation.
+
+The study is IRB approved and participation is voluntary.
 """
 
 def generate_session_id() -> str:
@@ -108,27 +119,26 @@ def is_within_distance(user_lat: float, user_lon: float) -> bool:
 
 def ask_gpt(question: str) -> str:
     prompt = f"""
-You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
+You are Hey Trial, a warm, knowledgeable AI assistant helping users learn about and join an IRB-approved clinical trial.
 
-Below is a study summary written in IRB-approved language. Your job is to answer any natural-language question about the study accurately and supportively. If the user asks about location, purpose, visits, eligibility, MRI, compensation, or logistics — answer with clear, friendly language based only on what is in the summary.
-
-If the user expresses interest or says something like “I want to participate”, invite them to start the pre-qualifier right here in the chat.
-
-Always end your answers with:  
-"Would you like to complete the quick pre-qualifier here in the chat to see if you're a match?"
-
-STUDY DETAILS:
+Study summary:
 {STUDY_SUMMARY}
 
-USER QUESTION:
-{question}
+Answer the user’s question clearly and supportively using only this study info. If the user asks about purpose, visits, MRI, eligibility, compensation, or how to sign up — explain in simple, accurate terms.
+
+If the user expresses interest or says things like "I want to join", "sign me up", "how do I qualify", or "I want to participate", invite them to complete the quick pre-qualifier in this chat.
+
+Always end your response with:
+“Would you like to complete the quick pre-qualifier here in the chat to see if you're a match?”
+
+User: {question}
 """
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.6,
-            max_tokens=300
+            max_tokens=350
         )
         return response.choices[0].message.content.strip()
     except Exception:
@@ -143,16 +153,18 @@ def handle_input(session_id: str, user_input: str) -> str:
     data = session["data"]
     text = user_input.strip()
 
+    # Initial chat mode
     if step == -1:
         reply = ask_gpt(text)
-        if "screener" in reply.lower() or "can I have your full name" in reply.lower():
+        if any(phrase in text.lower() for phrase in ["yes", "i want", "sign me up", "start", "begin", "participate", "qualify", "pre-qualifier"]):
             session["step"] = 0
+            return question_prompts[questions[0]]
         return reply
 
+    # SMS code step
     if step == len(questions) and not session["verified"]:
         if text == session["code"]:
             session["verified"] = True
-
             age = calculate_age(data["dob"])
             coords = get_coords_from_city_state(data["city_state"])
             distance_ok = is_within_distance(coords.get("latitude", 0), coords.get("longitude", 0))
@@ -182,6 +194,7 @@ def handle_input(session_id: str, user_input: str) -> str:
         else:
             return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
 
+    # Screener mode
     current_question = questions[step]
     user_value = text
 
