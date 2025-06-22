@@ -1,0 +1,6 @@
+requests
+twilio
+fastapi
+uvicorn
+flask
+openai
