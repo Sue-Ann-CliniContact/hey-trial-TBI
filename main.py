@@ -151,17 +151,20 @@ def handle_input(session_id: str, user_input: str) -> str:
 
     step = session["step"]
     data = session["data"]
-    text = user_input.strip()
+    text = user_input.strip().lower()
 
-    # Initial chat mode
+    # Chat mode before screener
     if step == -1:
-        reply = ask_gpt(text)
-        if any(phrase in text.lower() for phrase in ["yes", "i want", "sign me up", "start", "begin", "participate", "qualify", "pre-qualifier"]):
+        # If user says yes or expresses intent → move to screener
+        if any(p in text for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
+
+        # Otherwise, answer the question using GPT
+        reply = ask_gpt(user_input)
         return reply
 
-    # SMS code step
+    # SMS verification step
     if step == len(questions) and not session["verified"]:
         if text == session["code"]:
             session["verified"] = True
@@ -194,9 +197,9 @@ def handle_input(session_id: str, user_input: str) -> str:
         else:
             return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
 
-    # Screener mode
+    # Screener flow
     current_question = questions[step]
-    user_value = text
+    user_value = user_input.strip()
 
     if current_question == "email":
         if check_duplicate_email(user_value):
