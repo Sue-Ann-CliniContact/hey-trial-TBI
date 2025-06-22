@@ -3,9 +3,9 @@ import random
 import math
 import datetime
 import requests
-import openai
 import os
 from typing import Dict, Any
+from openai import OpenAI
 from twilio_sms import send_verification_sms
 from push_to_monday import push_to_monday
 from check_duplicate import check_duplicate_email
@@ -16,7 +16,7 @@ DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Session storage
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -118,7 +118,13 @@ def is_within_distance(user_lat: float, user_lon: float) -> bool:
     return distance <= DISTANCE_THRESHOLD_MILES
 
 def ask_gpt(question: str) -> str:
-    system_prompt = """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""
 You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
 
 Below is a study summary written in IRB-approved language. Your job is to answer any natural-language question about the study accurately and supportively. 
@@ -128,22 +134,15 @@ If the user expresses interest or says something like â€œI want to participateâ€
 
 Always end your answers with:  
 "Would you like to complete the quick pre-qualifier here in the chat to see if you're a match?"
-"""
 
-    study_summary = """
-This clinical research study focuses on individuals who experienced a traumatic brain injury (TBI) at least one year ago. 
-It is run by Kessler Foundation in East Hanover, NJ. Participants will take part in in-person visits that include supervised 
-exercise sessions, memory testing, and MRI brain scans. You must be 18 or older, have memory difficulties, be able to exercise, 
-speak and read English fluently, and be willing to undergo an MRI. The goal is to better understand how exercise affects memory 
-and brain function in those with a history of TBI.
+STUDY DETAILS:
+{STUDY_SUMMARY}
 """
-
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": system_prompt + "\n\nSTUDY DETAILS:\n" + study_summary},
-                {"role": "user", "content": question}
+                },
+                {
+                    "role": "user",
+                    "content": question
+                }
             ],
             temperature=0.6,
             max_tokens=300
