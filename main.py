@@ -3,23 +3,24 @@ import random
 import math
 import datetime
 import requests
+import openai
+import os
 from typing import Dict, Any
 from twilio_sms import send_verification_sms
-import os
 from push_to_monday import push_to_monday
 from check_duplicate import check_duplicate_email
-
 
 # Constants and API keys
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 # Session storage
 sessions: Dict[str, Dict[str, Any]] = {}
 
-# Questions and prompts
 questions = [
     "name", "email", "phone", "dob", "city_state",
     "tbi_year", "memory_issues", "english_fluent",
@@ -41,15 +42,22 @@ question_prompts = {
     "future_study_consent": "Would you like us to contact you about future studies? (Yes/No)"
 }
 
-# Session & flow helpers
+STUDY_SUMMARY = """
+This clinical research study focuses on individuals who experienced a traumatic brain injury (TBI) at least one year ago. 
+It is run by Kessler Foundation in East Hanover, NJ. Participants will take part in in-person visits that include supervised 
+exercise sessions, memory testing, and MRI brain scans. You must be 18 or older, have memory difficulties, be able to exercise, 
+speak and read English fluently, and be willing to undergo an MRI. The goal is to better understand how exercise affects memory 
+and brain function in those with a history of TBI.
+"""
+
 def generate_session_id() -> str:
     return str(uuid.uuid4())
 
-def start_session(ip: str) -> str:
+def start_session() -> str:
     session_id = generate_session_id()
     sessions[session_id] = {
-        "step": 0,
-        "data": {"ip": ip},  # capture IP for IPinfo lookup
+        "step": -1,
+        "data": {},
         "verified": False,
         "code": generate_verification_code()
     }
@@ -98,15 +106,33 @@ def is_within_distance(user_lat: float, user_lon: float) -> bool:
     distance = haversine_distance(user_lat, user_lon, *KESSLER_COORDS)
     return distance <= DISTANCE_THRESHOLD_MILES
 
-def start_session() -> str:
-    session_id = generate_session_id()
-    sessions[session_id] = {
-        "step": 0,
-        "data": {},
-        "verified": False,
-        "code": generate_verification_code()
-    }
-    return session_id
+def ask_gpt(question: str) -> str:
+    prompt = f"""
+You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
+
+Below is a study summary written in IRB-approved language. Your job is to answer any natural-language question about the study accurately and supportively. If the user asks about location, purpose, visits, eligibility, MRI, compensation, or logistics — answer with clear, friendly language based only on what is in the summary.
+
+If the user expresses interest or says something like “I want to participate”, invite them to start the pre-qualifier right here in the chat.
+
+Always end your answers with:  
+"Would you like to complete the quick pre-qualifier here in the chat to see if you're a match?"
+
+STUDY DETAILS:
+{STUDY_SUMMARY}
+
+USER QUESTION:
+{question}
+"""
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+            max_tokens=300
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return "I'm here to help you learn more about the study or see if you qualify. Would you like to begin the quick pre-qualifier now?"
 
 def handle_input(session_id: str, user_input: str) -> str:
     session = sessions.get(session_id)
@@ -115,13 +141,18 @@ def handle_input(session_id: str, user_input: str) -> str:
 
     step = session["step"]
     data = session["data"]
+    text = user_input.strip()
 
-    # Handle verification step
+    if step == -1:
+        reply = ask_gpt(text)
+        if "screener" in reply.lower() or "can I have your full name" in reply.lower():
+            session["step"] = 0
+        return reply
+
     if step == len(questions) and not session["verified"]:
-        if user_input.strip() == session["code"]:
+        if text == session["code"]:
             session["verified"] = True
 
-            # --- Eligibility logic after SMS verified ---
             age = calculate_age(data["dob"])
             coords = get_coords_from_city_state(data["city_state"])
             distance_ok = is_within_distance(coords.get("latitude", 0), coords.get("longitude", 0))
@@ -151,21 +182,18 @@ def handle_input(session_id: str, user_input: str) -> str:
         else:
             return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
 
-    # Process current question
     current_question = questions[step]
-    user_value = user_input.strip()
+    user_value = text
 
-    # Handle duplicate check at email step
     if current_question == "email":
         if check_duplicate_email(user_value):
-            session["step"] = len(questions)  # end flow
+            session["step"] = len(questions)
             push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "")
             return "It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
 
     data[current_question] = user_value
     session["step"] += 1
 
-    # If all questions answered → send SMS
     if session["step"] == len(questions):
         phone_number = data.get("phone", "")
         success = send_verification_sms(phone_number, session["code"])
@@ -174,6 +202,5 @@ def handle_input(session_id: str, user_input: str) -> str:
         else:
             return "There was an issue sending the SMS. Please double-check your number or try again later."
 
-    # Ask next question
     next_question = questions[session["step"]]
     return question_prompts[next_question]
