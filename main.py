@@ -16,8 +16,8 @@ from check_duplicate import check_duplicate_email
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-# Corrected variable name for clarity and common practice
-Maps_API_KEY = os.getenv("Maps_API_KEY") # Ensure your environment variable matches this name
+# CORRECTED: Ensure this matches your environment variable name and is used consistently
+Maps_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONDAY_BOARD_ID = 2014579172 # Centralized Monday.com Board ID
 
@@ -124,7 +124,7 @@ def get_location_from_ip(ip_address: str) -> Dict[str, Any]:
 
 def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
     """Gets geographical coordinates for a given city and state using Google Maps Geocoding API."""
-    # Ensure correct environment variable name is used here
+    # CORRECTED: Use the Maps_API_KEY variable
     url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}"
     try:
         response = requests.get(url)
@@ -138,7 +138,7 @@ def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
             return {}
     except Exception as e:
         print(f"Error getting coordinates for '{city_state}': {e}")
-    return {}
+        return {} # Ensure an empty dict is always returned on error
 
 def is_within_distance(user_lat: float, user_lon: float) -> bool:
     """Checks if user's location is within the defined distance threshold from Kessler."""
@@ -223,7 +223,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
     """Handles incoming user input, processes questions, and manages session state."""
     session = sessions.get(session_id)
     if not session:
-        print(f"❌ Session ID {session_id} not found.")
+        print(f"❌ Session ID {session_id} not found. (Current time: {datetime.datetime.now()})")
         return "⚠️ Unable to start session. Please refresh and try again."
 
     if ip_address and not session["ip"]:
@@ -264,6 +264,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                 coords = get_coords_from_city_state(city_state_value)
                 if not coords or not coords.get("latitude") or not coords.get("longitude"):
                     # This return statement is only hit *after* verification code, not during step-by-step
+                    print(f"❌ Geocoding failed for '{city_state_value}' during final submission.")
                     return "⚠️ Sorry, we couldn't determine your location for qualification. Please enter your city and state again like 'Newark, NJ'."
 
                 # Use .get with default 0.0 for safety
@@ -303,11 +304,14 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
     
     # --- Process answers to questions step-by-step ---
-    try:
-        current_question_index = step # Use a clear variable for current index
+    current_question_index = step # Use a clear variable for current index
+    try: # General try-except for processing each question
         current_question = questions[current_question_index]
         user_value = text
         
+        # DEBUG PRINTS to pinpoint issue
+        print(f"DEBUG: Processing '{current_question}' (step {current_question_index}) with value '{user_value}'")
+
         # Specific validation for phone number
         if current_question == "phone":
             if not is_us_number(user_value):
@@ -325,6 +329,9 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         # Use .get with a fallback to user_value in case normalization somehow fails or returns None/empty
         data[current_question] = normalized_data_for_current.get(current_question, user_value)
         
+        print(f"DEBUG: Data stored for '{current_question}': {data.get(current_question)}")
+        print(f"DEBUG: Current session step before increment: {session['step']}")
+
         # Handle duplicate email check (only if current_question is email)
         if current_question == "email":
             if check_duplicate_email(user_value, MONDAY_BOARD_ID):
@@ -336,9 +343,12 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         
         # Increment step to move to the next question
         session["step"] += 1
+        print(f"DEBUG: Session step after increment: {session['step']}")
+
 
         # Check if all questions are answered and initiate SMS verification
         if session["step"] == len(questions):
+            print("DEBUG: Entering SMS verification block.")
             phone_number = data.get("phone", "")
             if not phone_number: # Edge case: if phone number is somehow missing
                 print("❌ Error: Phone number missing before SMS verification.")
@@ -355,15 +365,17 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         
         # Return the next question prompt
         next_question_index = session["step"]
+        print(f"DEBUG: About to get next question. Next step index: {next_question_index}")
         next_question_key = questions[next_question_index]
+        print(f"DEBUG: Next question key: {next_question_key}")
         return question_prompts[next_question_key]
 
     except IndexError: # Catch if questions[session["step"]] goes out of bounds unexpectedly
-        print(f"❌ IndexError: Session step {session['step']} out of bounds for questions list.")
+        print(f"❌ IndexError: Session step {session['step']} out of bounds for questions list. (Current time: {datetime.datetime.now()})")
         traceback.print_exc() # Print full traceback for IndexErrors
         return "⚠️ An unexpected error occurred with the question sequence. Please try again."
     except Exception as e:
         # This is the crucial log for the "Something went wrong" at intermediate steps
-        print(f"❌ General error processing input for question '{current_question}' (step {current_question_index}) with value '{user_value}': {e}")
+        print(f"❌ General error processing input for question '{current_question}' (step {current_question_index}) with value '{user_value}': {e} (Current time: {datetime.datetime.now()})")
         traceback.print_exc() # Print full traceback for general errors
         return "⚠️ Something went wrong. Please try again."
