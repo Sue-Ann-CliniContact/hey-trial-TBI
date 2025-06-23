@@ -5,6 +5,7 @@ import datetime
 import requests
 import os
 import re
+import traceback # Import traceback for detailed error logging
 from typing import Dict, Any
 from openai import OpenAI
 from twilio_sms import send_verification_sms, is_us_number, format_us_number
@@ -15,7 +16,8 @@ from check_duplicate import check_duplicate_email
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-Maps_API_KEY = os.getenv("Maps_API_KEY")
+# Corrected variable name for clarity and common practice
+Maps_API_KEY = os.getenv("Maps_API_KEY") # Ensure your environment variable matches this name
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONDAY_BOARD_ID = 2014579172 # Centralized Monday.com Board ID
 
@@ -82,11 +84,18 @@ def generate_verification_code() -> str:
     return str(random.randint(1000, 9999))
 
 def calculate_age(dob: str) -> int:
-    birth_date = datetime.datetime.strptime(dob, "%Y-%m-%d").date()
-    today = datetime.date.today()
-    return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    """Calculates age from a YYYY-MM-DD date string. Raises ValueError if format is incorrect."""
+    try:
+        birth_date = datetime.datetime.strptime(dob, "%Y-%m-%d").date()
+        today = datetime.date.today()
+        return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    except ValueError as e:
+        print(f"Error calculating age for DOB '{dob}': {e}")
+        raise ValueError("Invalid date of birth format. Please use YYYY-MM-DD.")
+
 
 def haversine_distance(lat1, lon1, lat2, lon2) -> float:
+    """Calculates Haversine distance between two sets of coordinates in miles."""
     R = 3958.8
     d_lat = math.radians(lat2 - lat1)
     d_lon = math.radians(lon2 - lon1)
@@ -97,6 +106,7 @@ def haversine_distance(lat1, lon1, lat2, lon2) -> float:
     return R * c
 
 def get_location_from_ip(ip_address: str) -> Dict[str, Any]:
+    """Fetches location information from an IP address using ipinfo.io."""
     if not ip_address:
         return {}
     url = f"https://ipinfo.io/{ip_address}?token={IPINFO_TOKEN}"
@@ -109,27 +119,34 @@ def get_location_from_ip(ip_address: str) -> Dict[str, Any]:
             data["latitude"], data["longitude"] = float(loc[0]), float(loc[1])
         return data
     except Exception as e:
-        print(f"Error getting location from IP {ip_address}: {e}")
+        print(f"Error getting location from IP '{ip_address}': {e}")
         return {}
 
 def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
+    """Gets geographical coordinates for a given city and state using Google Maps Geocoding API."""
+    # Ensure correct environment variable name is used here
     url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}"
     try:
         response = requests.get(url)
         response.raise_for_status()
         results = response.json().get("results")
-        if results:
+        if results and len(results) > 0: # Ensure results exist and are not empty
             location = results[0]["geometry"]["location"]
             return {"latitude": location["lat"], "longitude": location["lng"]}
+        else:
+            print(f"No geocoding results found for city/state: {city_state}")
+            return {}
     except Exception as e:
-        print(f"Error getting coordinates for {city_state}: {e}")
+        print(f"Error getting coordinates for '{city_state}': {e}")
     return {}
 
 def is_within_distance(user_lat: float, user_lon: float) -> bool:
+    """Checks if user's location is within the defined distance threshold from Kessler."""
     distance = haversine_distance(user_lat, user_lon, *KESSLER_COORDS)
     return distance <= DISTANCE_THRESHOLD_MILES
 
 def normalize_fields(data: dict) -> dict:
+    """Normalizes specific fields in the data dictionary (Yes/No, handedness, consent)."""
     def normalize_yes_no(value):
         val = str(value).strip().lower()
         if val in ["yes", "y"]:
@@ -154,8 +171,6 @@ def normalize_fields(data: dict) -> dict:
             return "I, do not confirm"
         return value
 
-    # Create a copy to avoid modifying the original dict during iteration if needed,
-    # though in this case, direct modification is fine since keys are fixed.
     normalized_data = data.copy()
 
     for key, val in normalized_data.items():
@@ -169,6 +184,7 @@ def normalize_fields(data: dict) -> dict:
     return normalized_data
 
 def ask_gpt(question: str) -> str:
+    """Asks GPT-4 a question about the study summary."""
     try:
         response = client.chat.completions.create(
             model="gpt-4",
@@ -204,11 +220,12 @@ STUDY DETAILS:
         return "I'm here to help you learn more about the study or see if you qualify. Would you like to begin the quick pre-qualifier now?"
 
 def handle_input(session_id: str, user_input: str, ip_address: str = None) -> str:
+    """Handles incoming user input, processes questions, and manages session state."""
     session = sessions.get(session_id)
     if not session:
+        print(f"❌ Session ID {session_id} not found.")
         return "⚠️ Unable to start session. Please refresh and try again."
 
-    # Store IP address if provided (from app.py)
     if ip_address and not session["ip"]:
         session["ip"] = ip_address
 
@@ -216,7 +233,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
     data = session["data"]
     text = user_input.strip()
 
-    # Start of conversation
+    # Initial conversation step (user asks to start qualifier or general question)
     if step == -1:
         lowered = text.lower()
         if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
@@ -224,28 +241,41 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             return question_prompts[questions[0]]
         return ask_gpt(text)
 
-    # Handle code entry *before* continuing
+    # --- Handle verification code entry for final submission ---
     if step == len(questions) and not session["verified"]:
         if text == session["code"]:
             session["verified"] = True
             try:
-                # Normalize all fields before final processing
+                # Normalize all fields one final time before qualification check and Monday push
                 data = normalize_fields(data)
 
-                age = calculate_age(data["dob"])
-                coords = get_coords_from_city_state(data["city_state"])
+                # Qualification logic
+                # Safely get DOB, handling potential missing key
+                dob_value = data.get("dob", "")
+                if not dob_value: # Basic check for empty DOB before calculating age
+                    raise ValueError("Date of birth is missing.")
+                age = calculate_age(dob_value) # calculate_age now handles ValueError internally
 
-                if not coords:
-                    return "⚠️ Sorry, we couldn't determine your location. Please enter your city and state again like 'Newark, NJ'."
+                # Safely get city_state, handling potential missing key
+                city_state_value = data.get("city_state", "")
+                if not city_state_value: # Basic check for empty city_state
+                    raise ValueError("City and State information is missing.")
+                
+                coords = get_coords_from_city_state(city_state_value)
+                if not coords or not coords.get("latitude") or not coords.get("longitude"):
+                    # This return statement is only hit *after* verification code, not during step-by-step
+                    return "⚠️ Sorry, we couldn't determine your location for qualification. Please enter your city and state again like 'Newark, NJ'."
 
-                distance_ok = is_within_distance(coords.get("latitude", 0), coords.get("longitude", 0))
+                # Use .get with default 0.0 for safety
+                distance_ok = is_within_distance(coords.get("latitude", 0.0), coords.get("longitude", 0.0))
+                
                 qualified = (
                     age >= 18 and
-                    data["tbi_year"] == "Yes" and
-                    data["memory_issues"] == "Yes" and
-                    data["english_fluent"] == "Yes" and
-                    data["can_exercise"] == "Yes" and
-                    data["can_mri"] == "Yes" and
+                    data.get("tbi_year") == "Yes" and
+                    data.get("memory_issues") == "Yes" and
+                    data.get("english_fluent") == "Yes" and
+                    data.get("can_exercise") == "Yes" and
+                    data.get("can_mri") == "Yes" and
                     distance_ok
                 )
 
@@ -253,55 +283,87 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                 tags = []
                 if not distance_ok:
                     tags.append("Too far")
-                if data.get("handedness") == "Left-handed": # Add Left-handed tag if applicable
+                if data.get("handedness") == "Left-handed":
                     tags.append("Left-handed")
-
 
                 ip_data = get_location_from_ip(session.get("ip", ""))
                 ipinfo_text = "\n".join([f"{k}: {v}" for k, v in ip_data.items()]) if ip_data else ""
 
                 push_to_monday(data, group, qualified, tags, ipinfo_text, MONDAY_BOARD_ID)
                 return "✅ Your submission is now confirmed and has been received. Thank you!"
+            except ValueError as ve: # Catch specific value errors from e.g. calculate_age or missing data
+                print(f"❌ Qualification data error (ValueError): {ve}")
+                traceback.print_exc() # Print full traceback for qualification errors
+                return f"⚠️ There was an issue with your provided information: {ve}. Please try again."
             except Exception as e:
-                print("❌ Final submission error:", e)
+                print("❌ Final submission error (within handle_input verification block):", e)
+                traceback.print_exc() # Print full traceback for general final submission errors
                 return "⚠️ Something went wrong while confirming your submission. Please try again."
         else:
             return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
+    
+    # --- Process answers to questions step-by-step ---
+    try:
+        current_question_index = step # Use a clear variable for current index
+        current_question = questions[current_question_index]
+        user_value = text
+        
+        # Specific validation for phone number
+        if current_question == "phone":
+            if not is_us_number(user_value):
+                return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
 
+        # Validate DOB format here (YYYY-MM-DD)
+        if current_question == "dob":
+            try:
+                datetime.datetime.strptime(user_value, "%Y-%m-%d")
+            except ValueError:
+                return "⚠️ That doesn't look like a valid date format. Please use YYYY-MM-DD (e.g., 1990-01-20)."
+        
+        # Normalize just the current input before storing
+        normalized_data_for_current = normalize_fields({current_question: user_value})
+        # Use .get with a fallback to user_value in case normalization somehow fails or returns None/empty
+        data[current_question] = normalized_data_for_current.get(current_question, user_value)
+        
+        # Handle duplicate email check (only if current_question is email)
+        if current_question == "email":
+            if check_duplicate_email(user_value, MONDAY_BOARD_ID):
+                session["step"] = len(questions) # Skip to end if duplicate
+                # Push duplicate to a specific Monday.com group/board if needed
+                # Ensure this Monday.com group_id ('group_mkqb9ps4') exists on your board
+                push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
+                return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
+        
+        # Increment step to move to the next question
+        session["step"] += 1
 
-    current_question = questions[step]
-    user_value = text
+        # Check if all questions are answered and initiate SMS verification
+        if session["step"] == len(questions):
+            phone_number = data.get("phone", "")
+            if not phone_number: # Edge case: if phone number is somehow missing
+                print("❌ Error: Phone number missing before SMS verification.")
+                return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
 
-    # Validate US phone number early
-    if current_question == "phone":
-        if not is_us_number(user_value):
-            return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
+            formatted_phone_number = format_us_number(phone_number)
+            success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
+            if success:
+                return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
+            else:
+                session["step"] -= 1 # Stay on the current step if SMS fails
+                print(f"SMS sending failed: {error_msg}")
+                return error_msg
+        
+        # Return the next question prompt
+        next_question_index = session["step"]
+        next_question_key = questions[next_question_index]
+        return question_prompts[next_question_key]
 
-    # Normalize just the current input before storing
-    # The full `data` will be normalized again at the end for consistency before Monday.com push
-    normalized_current_value = normalize_fields({current_question: user_value})[current_question]
-    data[current_question] = normalized_current_value
-
-    session["step"] += 1
-
-    # Handle duplicate email check
-    if current_question == "email":
-        if check_duplicate_email(user_value, MONDAY_BOARD_ID):
-            session["step"] = len(questions) # Skip to end to prevent further questions
-            # Push duplicate to a specific Monday.com group/board if needed
-            push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
-            return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
-
-    if session["step"] == len(questions):
-        phone_number = data.get("phone", "")
-        # Use the format_us_number to ensure correct format for Twilio
-        formatted_phone_number = format_us_number(phone_number)
-        success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
-        if success:
-            return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
-        else:
-            session["step"] -= 1 # Stay on the phone number step if SMS fails
-            return error_msg
-
-    next_question = questions[session["step"]]
-    return question_prompts[next_question]
+    except IndexError: # Catch if questions[session["step"]] goes out of bounds unexpectedly
+        print(f"❌ IndexError: Session step {session['step']} out of bounds for questions list.")
+        traceback.print_exc() # Print full traceback for IndexErrors
+        return "⚠️ An unexpected error occurred with the question sequence. Please try again."
+    except Exception as e:
+        # This is the crucial log for the "Something went wrong" at intermediate steps
+        print(f"❌ General error processing input for question '{current_question}' (step {current_question_index}) with value '{user_value}': {e}")
+        traceback.print_exc() # Print full traceback for general errors
+        return "⚠️ Something went wrong. Please try again."
