@@ -242,27 +242,34 @@ def handle_input(session_id: str, user_input: str) -> str:
     current_question = questions[step]
     user_value = text
 
+    # Check duplicate email
     if current_question == "email":
         if check_duplicate_email(user_value):
             session["step"] = len(questions)
             push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "")
             return "It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
 
+    # Phone number validation ONLY during phone question
+    if current_question == "phone":
+        digits_only = ''.join(filter(str.isdigit, user_value))
+        if len(digits_only) != 10 or not digits_only.startswith(("2", "3", "4", "5", "6", "7", "8", "9")):
+            return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
+
+    # Store answer and normalize
     data[current_question] = user_value
-    normalize_fields(data)  # Normalize all inputs after current field is captured
+    normalize_fields(data)
     session["step"] += 1
 
-    phone_number = data.get("phone", "")
-    if not is_us_number(phone_number):
-        session["step"] -= 1
-        return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
+    # If last question answered, trigger SMS
+    if session["step"] == len(questions):
+        phone_number = data.get("phone", "")
+        success, error_msg = send_verification_sms(phone_number, session["code"])
+        if success:
+            return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
+        else:
+            session["step"] -= 1
+            return error_msg
 
-    success, error_msg = send_verification_sms(phone_number, session["code"])
-    if success:
-        return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
-    else:
-        session["step"] -= 1
-        return error_msg
-
+    # Ask next question
     next_question = questions[session["step"]]
     return question_prompts[next_question]
