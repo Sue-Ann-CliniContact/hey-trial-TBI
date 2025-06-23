@@ -5,7 +5,7 @@ import datetime
 import requests
 import os
 import re
-import traceback # Import traceback for detailed error logging
+import traceback
 from typing import Dict, Any
 from openai import OpenAI
 from twilio_sms import send_verification_sms, is_us_number, format_us_number
@@ -16,7 +16,6 @@ from check_duplicate import check_duplicate_email
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-# CORRECTED: Ensure this matches your environment variable name and is used consistently
 Maps_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONDAY_BOARD_ID = 2014579172 # Centralized Monday.com Board ID
@@ -76,7 +75,7 @@ def start_session() -> str:
         "data": {},
         "verified": False,
         "code": generate_verification_code(),
-        "ip": None # Initialize IP in session data
+        "ip": None
     }
     return session_id
 
@@ -124,13 +123,12 @@ def get_location_from_ip(ip_address: str) -> Dict[str, Any]:
 
 def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
     """Gets geographical coordinates for a given city and state using Google Maps Geocoding API."""
-    # CORRECTED: Use the Maps_API_KEY variable
     url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}"
     try:
         response = requests.get(url)
         response.raise_for_status()
         results = response.json().get("results")
-        if results and len(results) > 0: # Ensure results exist and are not empty
+        if results and len(results) > 0:
             location = results[0]["geometry"]["location"]
             return {"latitude": location["lat"], "longitude": location["lng"]}
         else:
@@ -138,7 +136,7 @@ def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
             return {}
     except Exception as e:
         print(f"Error getting coordinates for '{city_state}': {e}")
-        return {} # Ensure an empty dict is always returned on error
+        return {}
 
 def is_within_distance(user_lat: float, user_lon: float) -> bool:
     """Checks if user's location is within the defined distance threshold from Kessler."""
@@ -241,33 +239,49 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             return question_prompts[questions[0]]
         return ask_gpt(text)
 
-    # --- Handle verification code entry for final submission ---
-    if step == len(questions) and not session["verified"]:
+    # --- Handle verification code entry OR re-enter phone number ---
+    # This block is reached when all questions have been asked (step == len(questions))
+    # OR when SMS previously failed (step == len(questions) - 1, and user provides a new phone number)
+    if step == len(questions) or (step == (len(questions) - 1) and 'phone' in data and not session["verified"]):
+        # Check if the user's input is a potential phone number, if SMS previously failed
+        # and we are at the step to re-enter phone number (future_study_consent was last answered).
+        # OR if the user provides input that isn't the verification code, AND we're specifically on the phone field.
+        # This allows for a re-entry of phone number if previous SMS failed.
+        
+        # If current step is the verification step AND user input is not the code
+        if step == len(questions) and text != session["code"]:
+            # If the user is trying to re-enter a number when we expect a code
+            if is_us_number(text): # Check if input is a valid US number format
+                # Reset step to 'phone' and clear previous phone data to allow re-entry
+                session["step"] = questions.index("phone")
+                del data["phone"] # Clear previous phone number
+                print("DEBUG: SMS failed, resetting to phone number question.")
+                return "❌ SMS failed. Please enter a valid 10-digit US phone number to try again."
+            else:
+                # If input is not a number and not the code, it's just a wrong code.
+                return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
+        
+        # If input IS the verification code
         if text == session["code"]:
             session["verified"] = True
             try:
                 # Normalize all fields one final time before qualification check and Monday push
                 data = normalize_fields(data)
 
-                # Qualification logic
-                # Safely get DOB, handling potential missing key
                 dob_value = data.get("dob", "")
-                if not dob_value: # Basic check for empty DOB before calculating age
+                if not dob_value:
                     raise ValueError("Date of birth is missing.")
-                age = calculate_age(dob_value) # calculate_age now handles ValueError internally
+                age = calculate_age(dob_value)
 
-                # Safely get city_state, handling potential missing key
                 city_state_value = data.get("city_state", "")
-                if not city_state_value: # Basic check for empty city_state
+                if not city_state_value:
                     raise ValueError("City and State information is missing.")
                 
                 coords = get_coords_from_city_state(city_state_value)
                 if not coords or not coords.get("latitude") or not coords.get("longitude"):
-                    # This return statement is only hit *after* verification code, not during step-by-step
                     print(f"❌ Geocoding failed for '{city_state_value}' during final submission.")
                     return "⚠️ Sorry, we couldn't determine your location for qualification. Please enter your city and state again like 'Newark, NJ'."
 
-                # Use .get with default 0.0 for safety
                 distance_ok = is_within_distance(coords.get("latitude", 0.0), coords.get("longitude", 0.0))
                 
                 qualified = (
@@ -280,7 +294,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                     distance_ok
                 )
 
-                group = "new_group58505__1" if qualified else "new_group__1" # Qualified vs. Not Qualified group IDs
+                group = "new_group58505__1" if qualified else "new_group__1"
                 tags = []
                 if not distance_ok:
                     tags.append("Too far")
@@ -292,27 +306,29 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
 
                 push_to_monday(data, group, qualified, tags, ipinfo_text, MONDAY_BOARD_ID)
                 return "✅ Your submission is now confirmed and has been received. Thank you!"
-            except ValueError as ve: # Catch specific value errors from e.g. calculate_age or missing data
+            except ValueError as ve:
                 print(f"❌ Qualification data error (ValueError): {ve}")
-                traceback.print_exc() # Print full traceback for qualification errors
+                traceback.print_exc()
                 return f"⚠️ There was an issue with your provided information: {ve}. Please try again."
             except Exception as e:
                 print("❌ Final submission error (within handle_input verification block):", e)
-                traceback.print_exc() # Print full traceback for general final submission errors
+                traceback.print_exc()
                 return "⚠️ Something went wrong while confirming your submission. Please try again."
-        else:
-            return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
+        
+        # This return ensures that if it's not the code and not a new phone number
+        # it will still fall through to the specific error for wrong code or re-ask.
+        # This handles the case where `step == len(questions)` but the input is not the code.
+        return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
     
     # --- Process answers to questions step-by-step ---
-    current_question_index = step # Use a clear variable for current index
-    try: # General try-except for processing each question
+    current_question_index = step
+    try:
         current_question = questions[current_question_index]
         user_value = text
         
-        # DEBUG PRINTS to pinpoint issue
         print(f"DEBUG: Processing '{current_question}' (step {current_question_index}) with value '{user_value}'")
 
-        # Specific validation for phone number
+        # Specific validation for phone number (This runs when current_question IS 'phone')
         if current_question == "phone":
             if not is_us_number(user_value):
                 return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
@@ -326,7 +342,6 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         
         # Normalize just the current input before storing
         normalized_data_for_current = normalize_fields({current_question: user_value})
-        # Use .get with a fallback to user_value in case normalization somehow fails or returns None/empty
         data[current_question] = normalized_data_for_current.get(current_question, user_value)
         
         print(f"DEBUG: Data stored for '{current_question}': {data.get(current_question)}")
@@ -336,8 +351,6 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         if current_question == "email":
             if check_duplicate_email(user_value, MONDAY_BOARD_ID):
                 session["step"] = len(questions) # Skip to end if duplicate
-                # Push duplicate to a specific Monday.com group/board if needed
-                # Ensure this Monday.com group_id ('group_mkqb9ps4') exists on your board
                 push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
                 return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
         
@@ -345,12 +358,12 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         session["step"] += 1
         print(f"DEBUG: Session step after increment: {session['step']}")
 
-
         # Check if all questions are answered and initiate SMS verification
+        # This occurs immediately AFTER the last question's input (future_study_consent)
         if session["step"] == len(questions):
             print("DEBUG: Entering SMS verification block.")
             phone_number = data.get("phone", "")
-            if not phone_number: # Edge case: if phone number is somehow missing
+            if not phone_number:
                 print("❌ Error: Phone number missing before SMS verification.")
                 return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
 
@@ -359,9 +372,12 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             if success:
                 return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
             else:
-                session["step"] -= 1 # Stay on the current step if SMS fails
-                print(f"SMS sending failed: {error_msg}")
-                return error_msg
+                # If SMS sending fails, reset the step to the phone number question
+                # and clear the existing phone number to force re-entry.
+                session["step"] = questions.index("phone") # Set step back to phone question
+                data["phone"] = "" # Clear phone number in session data
+                print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
+                return f"❌ {error_msg} Please enter a new 10-digit US phone number."
         
         # Return the next question prompt
         next_question_index = session["step"]
@@ -370,12 +386,11 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         print(f"DEBUG: Next question key: {next_question_key}")
         return question_prompts[next_question_key]
 
-    except IndexError: # Catch if questions[session["step"]] goes out of bounds unexpectedly
+    except IndexError:
         print(f"❌ IndexError: Session step {session['step']} out of bounds for questions list. (Current time: {datetime.datetime.now()})")
-        traceback.print_exc() # Print full traceback for IndexErrors
+        traceback.print_exc()
         return "⚠️ An unexpected error occurred with the question sequence. Please try again."
     except Exception as e:
-        # This is the crucial log for the "Something went wrong" at intermediate steps
         print(f"❌ General error processing input for question '{current_question}' (step {current_question_index}) with value '{user_value}': {e} (Current time: {datetime.datetime.now()})")
-        traceback.print_exc() # Print full traceback for general errors
+        traceback.print_exc()
         return "⚠️ Something went wrong. Please try again."

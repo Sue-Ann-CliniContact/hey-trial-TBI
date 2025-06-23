@@ -30,8 +30,6 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
     def status_label(val):
         return {"label": val} if val else None
 
-    # Validate tags against allowed Monday.com dropdown labels
-    # This assumes "dropdown" column allows "Too far", "Left-handed", "fraudulent"
     allowed_tags = ["Too far", "Left-handed", "fraudulent"]
     filtered_tags = [tag for tag in tags if tag in allowed_tags]
 
@@ -49,18 +47,19 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
         "single_select": status_label(data.get("tbi_year")),
         "single_select3": status_label(data.get("memory_issues")),
         "single_select1": status_label(data.get("english_fluent")),
-        "single_select7": status_label(data.get("handedness")),  # Use "Left-handed"/"Right-handed"
+        "single_select7": status_label(data.get("handedness")),
         "single_select0": status_label(data.get("can_exercise")),
         "single_select9": status_label(data.get("can_mri")),
-        "single_select__1": status_label(data.get("future_study_consent")),  # Use "I, confirm" or "I, do not confirm"
+        "single_select__1": status_label(data.get("future_study_consent")),
         "boolean_mks56vyg": {"checked": qualified},
         "dropdown": {"labels": filtered_tags},
-        "text": safe(data.get("source", "Hey Trial Bot")), # Default source
+        "text": safe(data.get("source", "Hey Trial Bot")),
         "long_text_mks58x7v": {"text": ipinfo_text}
     }
 
     # Monday.com API requires JSON string for column_values
-    column_values_json = json.dumps(column_values)
+    # CORRECTED: Double-encode the JSON string to be a valid GraphQL string literal
+    column_values_json_escaped = json.dumps(json.dumps(column_values))
 
     mutation = {
         "query": f'''
@@ -69,7 +68,7 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
             board_id: {board_id},
             group_id: "{group_id}",
             item_name: "{safe(data.get("name", "TBI Submission"))}",
-            column_values: {column_values_json}
+            column_values: {column_values_json_escaped} # <--- Use the double-encoded string here
           ) {{
             id
           }}
