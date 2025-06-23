@@ -15,16 +15,13 @@ def is_us_number(number: str) -> bool:
     cleaned = re.sub(r"[^\d]", "", number)
     return cleaned.startswith("1") and len(cleaned) == 11 or len(cleaned) == 10
 
-def format_us_number(number: str) -> str:
-    """
-    Formats a valid US number to E.164 for Twilio.
-    """
-    cleaned = re.sub(r"[^\d]", "", number)
-    if len(cleaned) == 10:
-        return "+1" + cleaned
-    elif len(cleaned) == 11 and cleaned.startswith("1"):
-        return "+" + cleaned
-    return number
+def format_us_number(phone: str) -> str:
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) == 10:
+        return f"+1{digits}"
+    elif len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return phone
 
 def send_verification_sms(to_number: str, code: str) -> tuple[bool, str]:
     """

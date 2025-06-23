@@ -4,6 +4,7 @@ import math
 import datetime
 import requests
 import os
+import re
 from typing import Dict, Any
 from openai import OpenAI
 from twilio_sms import send_verification_sms
@@ -60,6 +61,11 @@ Compensation is provided for time and transportation.
 
 The study is IRB approved and participation is voluntary.
 """
+
+def is_us_number(phone: str) -> bool:
+    # Remove non-digit characters
+    digits = re.sub(r"\D", "", phone)
+    return digits.startswith("1") and len(digits) == 11 or len(digits) == 10
 
 def generate_session_id() -> str:
     return str(uuid.uuid4())
@@ -246,14 +252,17 @@ def handle_input(session_id: str, user_input: str) -> str:
     normalize_fields(data)  # Normalize all inputs after current field is captured
     session["step"] += 1
 
-    if session["step"] == len(questions):
-        phone_number = data.get("phone", "")
-        success, error_msg = send_verification_sms(phone_number, session["code"])
-        if success:
-            return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
-        else:
-            session["step"] -= 1
-            return error_msg
+    phone_number = data.get("phone", "")
+    if not is_us_number(phone_number):
+        session["step"] -= 1
+        return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
+
+    success, error_msg = send_verification_sms(phone_number, session["code"])
+    if success:
+        return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
+    else:
+        session["step"] -= 1
+        return error_msg
 
     next_question = questions[session["step"]]
     return question_prompts[next_question]
