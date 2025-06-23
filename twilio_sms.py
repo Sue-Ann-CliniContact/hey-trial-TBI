@@ -9,23 +9,41 @@ TWILIO_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 client = Client(TWILIO_SID, TWILIO_AUTH)
 
 def is_us_number(number: str) -> bool:
-    # Accepts formats like: +1XXXXXXXXXX or 10-digit US numbers
-    return bool(re.match(r"^\+1\d{10}$", number))
+    """
+    Validates if the number is a U.S. number (starts with +1 or is 10 digits).
+    """
+    cleaned = re.sub(r"[^\d]", "", number)
+    return cleaned.startswith("1") and len(cleaned) == 11 or len(cleaned) == 10
 
-def send_verification_sms(to_number: str, code: str) -> (bool, str):
+def format_us_number(number: str) -> str:
+    """
+    Formats a valid US number to E.164 for Twilio.
+    """
+    cleaned = re.sub(r"[^\d]", "", number)
+    if len(cleaned) == 10:
+        return "+1" + cleaned
+    elif len(cleaned) == 11 and cleaned.startswith("1"):
+        return "+" + cleaned
+    return number
+
+def send_verification_sms(to_number: str, code: str) -> tuple[bool, str]:
+    """
+    Sends a verification code if the number is a valid U.S. number.
+    Returns (True, "") if successful or (False, "error message") otherwise.
+    """
     if not is_us_number(to_number):
-        return False, "⚠️ That number doesn’t appear to be a valid US phone number. Please enter a 10-digit US number starting with +1."
+        return False, "⚠️ The number you entered does not appear to be a U.S. phone number. Please enter a valid 10-digit U.S. number."
 
     try:
+        formatted_number = format_us_number(to_number)
         message = client.messages.create(
             body=f"Hi! Your confirmation code for the Kessler Study is {code}. Please enter this code in the chat to confirm your submission.",
             from_=TWILIO_NUMBER,
-            to=to_number
+            to=formatted_number
         )
-        print(f"✅ SMS sent: SID {message.sid}")
+        print(f"SMS sent: SID {message.sid}")
         return True, ""
     except Exception as e:
-        print(f"❌ Failed to send SMS: {e}")
-        return False, "Something went wrong while sending the SMS. Please try again."
-
+        print(f"Failed to send SMS: {e}")
+        return False, "❌ Failed to send SMS. Please check your number and try again."
 
