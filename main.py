@@ -16,7 +16,7 @@ from check_duplicate import check_duplicate_email
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-Maps_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+Maps_API_KEY = os.getenv("Maps_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONDAY_BOARD_ID = 2014579172 # Centralized Monday.com Board ID
 
@@ -33,8 +33,8 @@ questions = [
 
 question_prompts = {
     "name": "Can I have your full name?",
-    "email": "What’s your email address?",
-    "phone": "What’s the best phone number to reach you? (10-digit US number, e.g. 5551234567)",
+    "email": "Okay, {name}. What’s your email address?",
+    "phone": "Thanks, {name}. What’s the best phone number to reach you? (10-digit US number, e.g. 5551234567)",
     "dob": "And your date of birth? (YYYY-MM-DD)",
     "city_state": "Where are you currently located? (City and State)",
     "tbi_year": "Have you experienced a traumatic brain injury at least one year ago? (Yes/No)",
@@ -83,14 +83,14 @@ def generate_verification_code() -> str:
     return str(random.randint(1000, 9999))
 
 def calculate_age(dob: str) -> int:
-    """Calculates age from a YYYY-MM-DD date string. Raises ValueError if format is incorrect."""
+    """Calculates age from a `YYYY-MM-DD` date string. Raises ValueError if format is incorrect."""
     try:
         birth_date = datetime.datetime.strptime(dob, "%Y-%m-%d").date()
         today = datetime.date.today()
         return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
     except ValueError as e:
         print(f"Error calculating age for DOB '{dob}': {e}")
-        raise ValueError("Invalid date of birth format. Please use YYYY-MM-DD.")
+        raise ValueError("Invalid date of birth format. Please use `YYYY-MM-DD`.")
 
 
 def haversine_distance(lat1, lon1, lat2, lon2) -> float:
@@ -176,7 +176,7 @@ def normalize_fields(data: dict) -> dict:
             normalized_data[key] = normalize_yes_no(val)
         elif key == "handedness":
             normalized_data[key] = normalize_handedness(val)
-        elif key == "future_study_consent":
+        elif key == "future_study_consent"]:
             normalized_data[key] = normalize_consent(val)
 
     return normalized_data
@@ -231,41 +231,50 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
     data = session["data"]
     text = user_input.strip()
 
-    # Initial conversation step (user asks to start qualifier or general question)
+    # Start of conversation
     if step == -1:
         lowered = text.lower()
-        if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
+        if any(p in lowered for p p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
         return ask_gpt(text)
 
-    # --- Handle verification code entry OR re-enter phone number ---
-    # This block is reached when all questions have been asked (step == len(questions))
-    # OR when SMS previously failed (step == len(questions) - 1, and user provides a new phone number)
-    if step == len(questions) or (step == (len(questions) - 1) and 'phone' in data and not session["verified"]):
-        # Check if the user's input is a potential phone number, if SMS previously failed
-        # and we are at the step to re-enter phone number (future_study_consent was last answered).
-        # OR if the user provides input that isn't the verification code, AND we're specifically on the phone field.
-        # This allows for a re-entry of phone number if previous SMS failed.
-        
-        # If current step is the verification step AND user input is not the code
-        if step == len(questions) and text != session["code"]:
-            # If the user is trying to re-enter a number when we expect a code
-            if is_us_number(text): # Check if input is a valid US number format
-                # Reset step to 'phone' and clear previous phone data to allow re-entry
-                session["step"] = questions.index("phone")
-                del data["phone"] # Clear previous phone number
-                print("DEBUG: SMS failed, resetting to phone number question.")
-                return "❌ SMS failed. Please enter a valid 10-digit US phone number to try again."
+    # --- SMS Verification and Final Submission Logic ---
+    # This block is entered when:
+    # 1. All questions are answered (session["step"] == len(questions))
+    # 2. Or we are in the process of re-entering phone number/verifying code after a previous SMS failure.
+    if session["step"] == len(questions) or (session["step"] == questions.index("phone") and not session["verified"]):
+        # Scenario 1: User just finished last question or needs to re-enter phone
+        if session["step"] == len(questions) and not session["verified"]:
+            # This means we just completed the last question (future_study_consent)
+            # AND SMS has not been sent yet OR it failed last time.
+            phone_number = data.get("phone", "")
+            if not phone_number:
+                print("❌ Error: Phone number missing before SMS verification attempt.")
+                return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
+
+            formatted_phone_number = format_us_number(phone_number)
+            success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
+            
+            if success:
+                # Successfully sent SMS, now wait for code
+                return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
             else:
-                # If input is not a number and not the code, it's just a wrong code.
-                return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
+                # SMS sending failed. Reset phone data and prompt for new number.
+                session["step"] = questions.index("phone") # Go back to phone question
+                data["phone"] = "" # Clear phone number
+                session["verified"] = False # Ensure not verified
+                print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
+                return f"❌ {error_msg} Please enter a new 10-digit US phone number."
+
+        # Scenario 2: User is inputting a code or trying to re-enter phone after a previous failed attempt.
+        # This occurs if session["step"] is already at len(questions) (waiting for code)
+        # OR if step was reset to questions.index("phone") for re-entry.
         
-        # If input IS the verification code
+        # If the input is the verification code
         if text == session["code"]:
             session["verified"] = True
             try:
-                # Normalize all fields one final time before qualification check and Monday push
                 data = normalize_fields(data)
 
                 dob_value = data.get("dob", "")
@@ -314,11 +323,17 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                 print("❌ Final submission error (within handle_input verification block):", e)
                 traceback.print_exc()
                 return "⚠️ Something went wrong while confirming your submission. Please try again."
-        
-        # This return ensures that if it's not the code and not a new phone number
-        # it will still fall through to the specific error for wrong code or re-ask.
-        # This handles the case where `step == len(questions)` but the input is not the code.
-        return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
+        else: # Input is NOT the verification code
+            # If the user is at the verification step and input is not the code, check if it's a new phone number
+            if session["step"] == len(questions) and is_us_number(text):
+                session["step"] = questions.index("phone") # Go back to phone question
+                data["phone"] = "" # Clear phone number
+                session["verified"] = False # Ensure not verified
+                print("DEBUG: User provided a number instead of code. Resetting to phone number question.")
+                return "❌ That wasn't the code. If you wish to change your number, please enter a valid 10-digit US phone number."
+            
+            # If it's not a code and not a number, it's just a wrong code.
+            return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
     
     # --- Process answers to questions step-by-step ---
     current_question_index = step
@@ -328,7 +343,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         
         print(f"DEBUG: Processing '{current_question}' (step {current_question_index}) with value '{user_value}'")
 
-        # Specific validation for phone number (This runs when current_question IS 'phone')
+        # Specific validation for phone number
         if current_question == "phone":
             if not is_us_number(user_value):
                 return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
@@ -338,7 +353,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             try:
                 datetime.datetime.strptime(user_value, "%Y-%m-%d")
             except ValueError:
-                return "⚠️ That doesn't look like a valid date format. Please use YYYY-MM-DD (e.g., 1990-01-20)."
+                return "⚠️ That doesn't look like a valid date format. Please use `YYYY-MM-DD` (e.g., 1990-01-20)."
         
         # Normalize just the current input before storing
         normalized_data_for_current = normalize_fields({current_question: user_value})
@@ -373,9 +388,10 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                 return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
             else:
                 # If SMS sending fails, reset the step to the phone number question
-                # and clear the existing phone number to force re-entry.
-                session["step"] = questions.index("phone") # Set step back to phone question
-                data["phone"] = "" # Clear phone number in session data
+                # and clear the existing phone number to allow re-entry.
+                session["step"] = questions.index("phone")
+                data["phone"] = ""
+                session["verified"] = False # Crucial: Reset verified status
                 print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
                 return f"❌ {error_msg} Please enter a new 10-digit US phone number."
         
@@ -383,8 +399,13 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         next_question_index = session["step"]
         print(f"DEBUG: About to get next question. Next step index: {next_question_index}")
         next_question_key = questions[next_question_index]
-        print(f"DEBUG: Next question key: {next_question_key}")
-        return question_prompts[next_question_key]
+
+        # Dynamically format the next prompt to include the name if available
+        first_name = data.get("name", "").split(" ")[0] if data.get("name") else ""
+        formatted_prompt = question_prompts[next_question_key].format(name=first_name) if "{name}" in question_prompts[next_question_key] else question_prompts[next_question_key]
+
+        print(f"DEBUG: Next question key: {next_question_key}, Formatted prompt: {formatted_prompt}")
+        return formatted_prompt
 
     except IndexError:
         print(f"❌ IndexError: Session step {session['step']} out of bounds for questions list. (Current time: {datetime.datetime.now()})")
