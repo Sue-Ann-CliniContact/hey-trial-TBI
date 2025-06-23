@@ -197,12 +197,13 @@ STUDY DETAILS:
 def handle_input(session_id: str, user_input: str) -> str:
     session = sessions.get(session_id)
     if not session:
-        return "Session not found. Please refresh and try again."
+        return "⚠️ Unable to start session. Please refresh and try again."
 
     step = session["step"]
     data = session["data"]
     text = user_input.strip()
 
+    # Start of conversation
     if step == -1:
         lowered = text.lower()
         if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
@@ -210,57 +211,28 @@ def handle_input(session_id: str, user_input: str) -> str:
             return question_prompts[questions[0]]
         return ask_gpt(text)
 
-    if step == len(questions) and not session["verified"]:
-        if text == session["code"]:
-            session["verified"] = True
-            normalize_fields(data)
-            age = calculate_age(data["dob"])
-            coords = get_coords_from_city_state(data["city_state"])
-            distance_ok = is_within_distance(coords.get("latitude", 0), coords.get("longitude", 0))
-
-            qualified = (
-                age >= 18 and
-                data["tbi_year"].lower() == "yes" and
-                data["memory_issues"].lower() == "yes" and
-                data["english_fluent"].lower() == "yes" and
-                data["can_exercise"].lower() == "yes" and
-                data["can_mri"].lower() == "yes" and
-                distance_ok
-            )
-
-            group = "new_group58505__1" if qualified else "new_group__1"
-            tags = ["Too far"] if not distance_ok else []
-
-            ip_data = get_location_from_ip(data.get("ip", ""))
-            ipinfo_text = "\n".join([f"{k}: {v}" for k, v in ip_data.items()])
-
-            push_to_monday(data, group, qualified, tags, ipinfo_text)
-            return "✅ Your submission is now confirmed and has been received. Thank you!"
-        else:
-            return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
-
     current_question = questions[step]
     user_value = text
 
-    # Check duplicate email
-    if current_question == "email":
-        if check_duplicate_email(user_value):
-            session["step"] = len(questions)
-            push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "")
-            return "It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
-
-    # Phone number validation ONLY during phone question
+    # Validate US phone number early
     if current_question == "phone":
-        digits_only = ''.join(filter(str.isdigit, user_value))
-        if len(digits_only) != 10 or not digits_only.startswith(("2", "3", "4", "5", "6", "7", "8", "9")):
+        digits = ''.join(filter(str.isdigit, user_value))
+        if len(digits) != 10:
             return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
 
-    # Store answer and normalize
+    # Store and normalize input
     data[current_question] = user_value
     normalize_fields(data)
     session["step"] += 1
 
-    # If last question answered, trigger SMS
+    # Handle duplicate email check
+    if current_question == "email":
+        if check_duplicate_email(user_value):
+            session["step"] = len(questions)
+            push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "")
+            return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
+
+    # After last question: verify phone
     if session["step"] == len(questions):
         phone_number = data.get("phone", "")
         success, error_msg = send_verification_sms(phone_number, session["code"])
@@ -270,6 +242,39 @@ def handle_input(session_id: str, user_input: str) -> str:
             session["step"] -= 1
             return error_msg
 
-    # Ask next question
+    # After code is entered
+    if step == len(questions) and not session["verified"]:
+        if text == session["code"]:
+            session["verified"] = True
+            try:
+                age = calculate_age(data["dob"])
+                coords = get_coords_from_city_state(data["city_state"])
+                if not coords:
+                    return "⚠️ Sorry, we couldn't determine your location. Please enter your city and state again like 'Newark, NJ'."
+
+                distance_ok = is_within_distance(coords["latitude"], coords["longitude"])
+                qualified = (
+                    age >= 18 and
+                    data["tbi_year"] == "Yes" and
+                    data["memory_issues"] == "Yes" and
+                    data["english_fluent"] == "Yes" and
+                    data["can_exercise"] == "Yes" and
+                    data["can_mri"] == "Yes" and
+                    distance_ok
+                )
+
+                group = "new_group58505__1" if qualified else "new_group__1"
+                tags = ["Too far"] if not distance_ok else []
+
+                ip_data = get_location_from_ip(data.get("ip", ""))
+                ipinfo_text = "\n".join([f"{k}: {v}" for k, v in ip_data.items()])
+                push_to_monday(data, group, qualified, tags, ipinfo_text)
+                return "✅ Your submission is now confirmed and has been received. Thank you!"
+            except Exception as e:
+                print("❌ Final submission error:", e)
+                return "⚠️ Something went wrong while confirming your submission. Please try again."
+        else:
+            return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
+
     next_question = questions[session["step"]]
     return question_prompts[next_question]
