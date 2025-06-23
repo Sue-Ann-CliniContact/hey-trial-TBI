@@ -63,9 +63,8 @@ The study is IRB approved and participation is voluntary.
 """
 
 def is_us_number(phone: str) -> bool:
-    # Remove non-digit characters
     digits = re.sub(r"\D", "", phone)
-    return digits.startswith("1") and len(digits) == 11 or len(digits) == 10
+    return (len(digits) == 10) or (digits.startswith("1") and len(digits) == 11)
 
 def generate_session_id() -> str:
     return str(uuid.uuid4())
@@ -220,19 +219,19 @@ def handle_input(session_id: str, user_input: str) -> str:
         if len(digits) != 10:
             return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
 
-    # Store and normalize input
-    data[current_question] = user_value
-    normalize_fields(data)
-    session["step"] += 1
-
+    # Normalize just the current input before storing
+    normalized = normalize_fields({current_question: user_value})
+    data[current_question] = normalized[current_question]
+    
     # Handle duplicate email check
     if current_question == "email":
         if check_duplicate_email(user_value):
             session["step"] = len(questions)
             push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "")
             return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
+    
+    session["step"] += 1
 
-    # After last question: verify phone
     if session["step"] == len(questions):
         phone_number = data.get("phone", "")
         success, error_msg = send_verification_sms(phone_number, session["code"])
