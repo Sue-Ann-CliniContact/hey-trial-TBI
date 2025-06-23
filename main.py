@@ -117,6 +117,42 @@ def is_within_distance(user_lat: float, user_lon: float) -> bool:
     distance = haversine_distance(user_lat, user_lon, *KESSLER_COORDS)
     return distance <= DISTANCE_THRESHOLD_MILES
 
+def normalize_fields(data: dict) -> dict:
+    def normalize_yes_no(value):
+        val = value.strip().lower()
+        if val in ["yes", "y"]:
+            return "Yes"
+        elif val in ["no", "n"]:
+            return "No"
+        return value
+
+    def normalize_handedness(value):
+        val = value.strip().lower()
+        if "left" in val:
+            return "Left-handed"
+        elif "right" in val:
+            return "Right-handed"
+        return value
+
+    def normalize_consent(value):
+        val = value.strip().lower()
+        if val == "yes":
+            return "I, confirm"
+        elif val == "no":
+            return "I, do not confirm"
+        return value
+
+    for key in data:
+        val = str(data[key])
+        if key in ["tbi_year", "memory_issues", "english_fluent", "can_exercise", "can_mri"]:
+            data[key] = normalize_yes_no(val)
+        elif key == "handedness":
+            data[key] = normalize_handedness(val)
+        elif key == "future_study_consent":
+            data[key] = normalize_consent(val)
+
+    return data
+
 def ask_gpt(question: str) -> str:
     try:
         response = client.chat.completions.create(
@@ -161,21 +197,17 @@ def handle_input(session_id: str, user_input: str) -> str:
     data = session["data"]
     text = user_input.strip()
 
-    # Chat mode before screener
     if step == -1:
-        # If user expresses intent → start screener
         lowered = text.lower()
         if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
-
-        # Otherwise, respond via GPT
         return ask_gpt(text)
 
-    # SMS verification step
     if step == len(questions) and not session["verified"]:
         if text == session["code"]:
             session["verified"] = True
+            normalize_fields(data)
             age = calculate_age(data["dob"])
             coords = get_coords_from_city_state(data["city_state"])
             distance_ok = is_within_distance(coords.get("latitude", 0), coords.get("longitude", 0))
@@ -191,11 +223,7 @@ def handle_input(session_id: str, user_input: str) -> str:
             )
 
             group = "new_group58505__1" if qualified else "new_group__1"
-            tags = ["Validated"]
-            if not qualified:
-                tags.append("Disqualified")
-            if not distance_ok:
-                tags.append("Far Location")
+            tags = ["Too far"] if not distance_ok else []
 
             ip_data = get_location_from_ip(data.get("ip", ""))
             ipinfo_text = "\n".join([f"{k}: {v}" for k, v in ip_data.items()])
@@ -205,11 +233,9 @@ def handle_input(session_id: str, user_input: str) -> str:
         else:
             return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
 
-    # Collect user input for current screener question
     current_question = questions[step]
     user_value = text
 
-    # Email duplicate check
     if current_question == "email":
         if check_duplicate_email(user_value):
             session["step"] = len(questions)
@@ -217,18 +243,17 @@ def handle_input(session_id: str, user_input: str) -> str:
             return "It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
 
     data[current_question] = user_value
+    normalize_fields(data)  # Normalize all inputs after current field is captured
     session["step"] += 1
 
-    # If this was the last question → send SMS
     if session["step"] == len(questions):
         phone_number = data.get("phone", "")
         success, error_msg = send_verification_sms(phone_number, session["code"])
         if success:
             return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
         else:
-            session["step"] -= 1  # allow retry of phone number input
+            session["step"] -= 1
             return error_msg
 
-    # Ask next question
     next_question = questions[session["step"]]
     return question_prompts[next_question]

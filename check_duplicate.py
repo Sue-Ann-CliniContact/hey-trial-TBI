@@ -34,4 +34,6 @@ def check_duplicate_email(email: str) -> bool:
         return len(items) > 0
     except Exception as e:
         print(f"Error checking duplicates: {e}")
+        if response is not None:
+            print("Response:", response.text)
         return False
