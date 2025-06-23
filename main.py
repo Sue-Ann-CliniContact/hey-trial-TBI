@@ -31,7 +31,7 @@ questions = [
 question_prompts = {
     "name": "Can I have your full name?",
     "email": "What’s your email address?",
-    "phone": "What’s the best phone number to reach you?",
+    "phone": "What’s the best phone number to reach you? (10-digit US number, e.g. 5551234567)",
     "dob": "And your date of birth? (YYYY-MM-DD)",
     "city_state": "Where are you currently located? (City and State)",
     "tbi_year": "Have you experienced a traumatic brain injury at least one year ago? (Yes/No)",
@@ -215,13 +215,14 @@ def handle_input(session_id: str, user_input: str) -> str:
 
     # Validate US phone number early
     if current_question == "phone":
-        digits = ''.join(filter(str.isdigit, user_value))
-        if len(digits) != 10:
+        digits = re.sub(r"\D", "", user_value)
+        if not (len(digits) == 10 or (digits.startswith("1") and len(digits) == 11)):
             return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
 
     # Normalize just the current input before storing
     normalized = normalize_fields({current_question: user_value})
     data[current_question] = normalized[current_question]
+    normalize_fields(data)
     
     # Handle duplicate email check
     if current_question == "email":
