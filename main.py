@@ -159,18 +159,18 @@ def handle_input(session_id: str, user_input: str) -> str:
 
     step = session["step"]
     data = session["data"]
-    text = user_input.strip().lower()
+    text = user_input.strip()
 
     # Chat mode before screener
     if step == -1:
-        # If user says yes or expresses intent → move to screener
-        if any(p in text for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
+        # If user expresses intent → start screener
+        lowered = text.lower()
+        if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
 
-        # Otherwise, answer the question using GPT
-        reply = ask_gpt(user_input)
-        return reply
+        # Otherwise, respond via GPT
+        return ask_gpt(text)
 
     # SMS verification step
     if step == len(questions) and not session["verified"]:
@@ -205,10 +205,11 @@ def handle_input(session_id: str, user_input: str) -> str:
         else:
             return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
 
-    # Screener flow
+    # Collect user input for current screener question
     current_question = questions[step]
-    user_value = user_input.strip()
+    user_value = text
 
+    # Email duplicate check
     if current_question == "email":
         if check_duplicate_email(user_value):
             session["step"] = len(questions)
@@ -218,13 +219,16 @@ def handle_input(session_id: str, user_input: str) -> str:
     data[current_question] = user_value
     session["step"] += 1
 
+    # If this was the last question → send SMS
     if session["step"] == len(questions):
         phone_number = data.get("phone", "")
-        success = send_verification_sms(phone_number, session["code"])
+        success, error_msg = send_verification_sms(phone_number, session["code"])
         if success:
             return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
         else:
-            return "There was an issue sending the SMS. Please double-check your number or try again later."
+            session["step"] -= 1  # allow retry of phone number input
+            return error_msg
 
+    # Ask next question
     next_question = questions[session["step"]]
     return question_prompts[next_question]

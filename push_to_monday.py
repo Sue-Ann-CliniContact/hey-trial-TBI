@@ -12,22 +12,24 @@ headers = {
 }
 
 def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinfo_text: str) -> dict:
+    def safe(val):
+        return val if val is not None else ""
+
     column_values = {
-        "name": data.get("name"),
-        "email": data.get("email"),
-        "phone": data.get("phone"),
-        "date": data.get("dob"),
-        "text9": data.get("city_state"),
-        "single_select": data.get("tbi_year"),
-        "single_select3": data.get("memory_issues"),
-        "single_select1": data.get("english_fluent"),
-        "single_select7": data.get("handedness"),
-        "single_select0": data.get("can_exercise"),
-        "single_select9": data.get("can_mri"),
-        "single_select__1": data.get("future_study_consent"),
+        "email_mkrjhbqe": safe(data.get("email")),
+        "phone_mkrj1e0m": safe(data.get("phone")),
+        "date": safe(data.get("dob")),
+        "text9": safe(data.get("city_state")),
+        "single_select": safe(data.get("tbi_year")),
+        "single_select3": safe(data.get("memory_issues")),
+        "single_select1": safe(data.get("english_fluent")),
+        "single_select7": safe(data.get("handedness")),
+        "single_select0": safe(data.get("can_exercise")),
+        "single_select9": safe(data.get("can_mri")),
+        "single_select__1": safe(data.get("future_study_consent")),
         "boolean_mks56vyg": qualified,
         "dropdown": {"labels": tags},
-        "text": data.get("source", "Hey Trial Bot"),
+        "text": safe(data.get("source", "Hey Trial Bot")),
         "long_text_mks58x7v": {"text": ipinfo_text}
     }
 
@@ -37,7 +39,7 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
           create_item (
             board_id: {BOARD_ID},
             group_id: "{group_id}",
-            item_name: "{data.get("name")}",
+            item_name: "{safe(data.get("name", "TBI Submission"))}",
             column_values: {json.dumps(column_values)}
           ) {{
             id
@@ -46,5 +48,11 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
         '''
     }
 
-    response = requests.post(MONDAY_API_URL, headers=headers, json=mutation)
-    return response.json()
+    try:
+        response = requests.post(MONDAY_API_URL, headers=headers, json=mutation)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print("❌ Failed to push to Monday:", e)
+        print("Response:", response.text)
+        return {"error": str(e)}
