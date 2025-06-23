@@ -14,13 +14,17 @@ def check_duplicate_email(email: str) -> bool:
     query = {
         "query": f'''
         query {{
-          items_by_column_values(
-            board_id: {BOARD_ID},
-            column_id: "email_mkrjhbqe",
-            column_value: "{email}"
-          ) {{
-            id
-            name
+          boards(ids: {BOARD_ID}) {{
+            items_page(limit: 100) {{
+              items {{
+                id
+                name
+                column_values {{
+                  id
+                  text
+                }}
+              }}
+            }}
           }}
         }}
         '''
@@ -30,8 +34,13 @@ def check_duplicate_email(email: str) -> bool:
         response = requests.post(MONDAY_API_URL, headers=headers, json=query)
         response.raise_for_status()
         data = response.json()
-        items = data.get("data", {}).get("items_by_column_values", [])
-        return len(items) > 0
+
+        items = data.get("data", {}).get("boards", [])[0].get("items_page", {}).get("items", [])
+        for item in items:
+            for column in item.get("column_values", []):
+                if column["id"] == "email" and column.get("text", "").lower() == email.lower():
+                    return True
+        return False
     except Exception as e:
         print(f"Error checking duplicates: {e}")
         if response is not None:

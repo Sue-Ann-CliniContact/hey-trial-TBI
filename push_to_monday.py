@@ -36,7 +36,7 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
         "single_select0": status_label(data.get("can_exercise")),
         "single_select9": status_label(data.get("can_mri")),
         "single_select__1": status_label(data.get("future_study_consent")),  # Use "I, confirm" or "I, do not confirm"
-        "boolean_mks56vyg": qualified,
+        "boolean_mks56vyg": {"checked": qualified},
         "dropdown": {"labels": tags},  # Only allowed labels: "Too far", "Left-handed", "fraudulent"
         "text": safe(data.get("source", "Hey Trial Bot")),
         "long_text_mks58x7v": {"text": ipinfo_text}
