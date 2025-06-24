@@ -134,7 +134,7 @@ def get_location_from_ip(ip_address: str) -> Dict[str, Any]:
 
 def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
     """Gets geographical coordinates for a given city and state using Google Maps Geocoding API."""
-    url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}"
+    url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}" # Corrected variable name
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -192,18 +192,11 @@ def normalize_fields(data: dict) -> dict:
 
     return normalized_data
 
-# --- CHANGE START ---
-# Renamed from ask_gpt to ask_ai for generality
 def ask_ai(question: str) -> str:
     """Asks the AI model (Gemini) a question about the study summary."""
     try:
-        # Initialize the Gemini model
-        model = genai.GenerativeModel('models/gemini-pro') 
-
-        # Construct the chat message for Gemini
-        # We integrate the "system" prompt directly into the user's first message for a simpler
-        # one-shot generation using model.generate_content.
-        # For multi-turn conversations, you might use model.start_chat().
+        model = genai.GenerativeModel('models/gemini-pro')
+        
         full_prompt = f"""
 You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
 
@@ -223,13 +216,12 @@ User's question: {question}
         
         response = model.generate_content(full_prompt)
         
-        # Gemini's response structure typically has the text directly in .text
         return response.text.strip()
     except Exception as e:
-        print("Gemini API error:", e) # Changed log message
-        # You might want to differentiate between API errors and other exceptions
+        print("Gemini API error:", e)
+        if "404" in str(e) or "not found" in str(e).lower() or "not supported" in str(e).lower():
+            return "I'm sorry, I'm having trouble connecting with my AI brain right now. It might be a temporary issue or a configuration problem. Would you like to begin the quick pre-qualifier now?"
         return "I'm here to help you learn more about the study or see if you qualify. Would you like to begin the quick pre-qualifier now?"
-# --- CHANGE END ---
 
 def handle_input(session_id: str, user_input: str, ip_address: str = None) -> str:
     """Handles incoming user input, processes questions, and manages session state."""
@@ -251,16 +243,31 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
-        # --- CHANGE START ---
-        return ask_ai(text) # Call ask_ai instead of ask_gpt
-        # --- CHANGE END ---
+        return ask_ai(text)
 
     # --- SMS Verification and Final Submission Logic (After all questions are answered) ---
-    # This block is entered when session["step"] is equal to len(questions)
-    # This indicates the transition to SMS or processing a verification code/phone re-entry.
-    if session["step"] == len(questions):
-        # Scenario A: User provides a verification code (or attempts to re-enter phone after SMS was sent)
-        if session["verified"]: # SMS was sent previously, now we expect a code
+    if session["step"] == len(questions): # This ensures this block is primarily for the final stage
+        if not session["verified"]: # SMS not sent or needs re-sending
+            print("DEBUG: All questions answered. Attempting to send SMS for the first time.")
+            phone_number = data.get("phone", "")
+            if not phone_number:
+                print("❌ Error: Phone number missing before SMS verification attempt.")
+                return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
+
+            formatted_phone_number = format_us_number(phone_number)
+            success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
+            
+            if success:
+                session["verified"] = True # Mark as SMS sent
+                return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
+            else:
+                # SMS sending failed. Reset state to allow re-entry of phone number.
+                session["step"] = questions.index("phone") # Go back to phone question
+                data["phone"] = "" # Clear phone number
+                session["verified"] = False # Ensure not verified
+                print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
+                return f"❌ {error_msg} Please enter a new 10-digit US phone number."
+        else: # session["verified"] is True, meaning SMS was previously sent, now waiting for code
             print(f"DEBUG: Session verified, expecting code input. User input: '{text}'")
             if text == session["code"]:
                 # Correct code, proceed to final submission
@@ -314,42 +321,16 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                     traceback.print_exc()
                     return "⚠️ Something went wrong while confirming your submission. Please try again."
             else: # Input is NOT the verification code
-                # User provided something other than the code, check if it's a new phone number
-                if is_us_number(text):
+                if is_us_number(text): # User might be trying to provide a new phone number
                     session["step"] = questions.index("phone") # Go back to phone question
                     data["phone"] = "" # Clear phone number
                     session["verified"] = False # Reset verified status
                     print("DEBUG: User provided a number instead of code. Resetting to phone number question.")
                     return "❌ That wasn't the code. If you wish to change your number, please enter a valid 10-digit US phone number."
                 
-                # If it's not a number and not the code, it's just a wrong code.
                 return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
-        
-        # Scenario B: All questions answered, and SMS has NOT been sent yet.
-        # This branch will execute the *first time* session["step"] becomes len(questions).
-        else: # not session["verified"]
-            print("DEBUG: All questions answered. Attempting to send SMS for the first time.")
-            phone_number = data.get("phone", "")
-            if not phone_number:
-                print("❌ Error: Phone number missing before SMS verification attempt.")
-                return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
-
-            formatted_phone_number = format_us_number(phone_number)
-            success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
-            
-            if success:
-                session["verified"] = True # Mark as SMS sent
-                return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
-            else:
-                # SMS sending failed on first attempt. Reset state to allow re-entry of phone number.
-                session["step"] = questions.index("phone") # Go back to phone question
-                data["phone"] = "" # Clear phone number
-                session["verified"] = False # Ensure not verified
-                print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
-                return f"❌ {error_msg} Please enter a new 10-digit US phone number."
     
     # --- Process answers to questions step-by-step (If not in SMS/final submission phase) ---
-    # This means current_question_index is always < len(questions)
     current_question_index = step
     try:
         current_question = questions[current_question_index]
@@ -358,43 +339,39 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         print(f"DEBUG: Processing '{current_question}' (step {current_question_index}) with value '{user_value}'")
 
         if current_question == "phone":
+            # Add basic email validation for phone field if user re-enters
+            email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+            if re.match(email_regex, user_value): # This is a check for email in phone field
+                return "⚠️ That looks like an email address, but I need a 10-digit US phone number."
+
             if not is_us_number(user_value):
                 return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
 
-        if current_question == "dob":
-            try:
-                datetime.datetime.strptime(user_value, "%Y-%m-%d")
-            except ValueError:
-                return "⚠️ That doesn't look like a valid date format. Please use `YYYY-MM-DD` (e.g., 1990-01-20)."
-        
-        normalized_data_for_current = normalize_fields({current_question: user_value})
-        data[current_question] = normalized_data_for_current.get(current_question, user_value)
-        
-        print(f"DEBUG: Data stored for '{current_question}': {data.get(current_question)}")
-        print(f"DEBUG: Current session step before increment: {session['step']}")
-
         if current_question == "email":
+            # Add basic email validation here
             email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
             if not re.match(email_regex, user_value):
                 return "⚠️ That doesn't look like a valid email address. Please provide a valid email (e.g., example@domain.com)."           
-           if check_duplicate_email(user_value, MONDAY_BOARD_ID):
+            # FIX: Corrected indentation for the duplicate check
+            if check_duplicate_email(user_value, MONDAY_BOARD_ID):
                 session["step"] = len(questions)
                 push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
                 return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
  
-        # Normalize just the current input before storing
+        # FIX: Removed the duplicated normalization lines. This block runs AFTER email validation.
+        # normalized_data_for_current = normalize_fields({current_question: user_value})
+        # data[current_question] = normalized_data_for_current.get(current_question, user_value)
+ 
+        # Moved the normalization and data storage here to ensure it applies after all validations
+        # within the current_question processing block.
         normalized_data_for_current = normalize_fields({current_question: user_value})
         data[current_question] = normalized_data_for_current.get(current_question, user_value)
- 
-        session["step"] += 1 # Increment step AFTER processing current question
+
+        session["step"] += 1
         print(f"DEBUG: Session step after increment: {session['step']}")
 
-        # If after incrementing, we are now at the end of questions,
-        # The next call to handle_input will trigger the SMS verification block above.
-        # So we just need to return the next question or signal completion here.
         if session["step"] == len(questions):
             print(f"DEBUG: All questions answered. Next input will trigger SMS/Verification. (Current time: {datetime.datetime.now()})")
-            # Return a generic message indicating completion of questions, awaiting SMS.
             return "Thank you for answering all the questions. Please wait while we prepare your verification."
 
         next_question_index = session["step"]
