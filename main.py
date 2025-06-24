@@ -195,7 +195,7 @@ def normalize_fields(data: dict) -> dict:
 def ask_ai(question: str) -> str:
     """Asks the AI model (Gemini) a question about the study summary."""
     try:
-        model = genai.GenerativeModel('models/gemini-pro')
+        model = genai.GenerativeModel('models/gemini-1.0-pro')
         
         full_prompt = f"""
 You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
