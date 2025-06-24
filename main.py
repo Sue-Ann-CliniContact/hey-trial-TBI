@@ -250,7 +250,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
-        return ask_ai(text)
+        return ask_gpt(text)
 
     # --- SMS Verification and Final Submission Logic (After all questions are answered) ---
     if session["step"] == len(questions): # This ensures this block is primarily for the final stage
