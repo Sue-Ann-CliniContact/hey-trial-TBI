@@ -9,8 +9,8 @@ import traceback
 from typing import Dict, Any
 
 # --- CHANGE START ---
-# from openai import OpenAI # Removed OpenAI import
-import google.generativeai as genai # Added Google Generative AI import
+from openai import OpenAI
+#import google.generativeai as genai # Added Google Generative AI import#
 # --- CHANGE END ---
 
 from twilio_sms import send_verification_sms, is_us_number, format_us_number
@@ -24,13 +24,13 @@ IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
 Maps_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 
 # --- CHANGE START ---
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Removed OpenAI API key variable
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Added Gemini API key variable
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Removed OpenAI API key variable
+#GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Added Gemini API key variable
 MONDAY_BOARD_ID = 2014579172 # Centralized Monday.com Board ID
 
 # --- CHANGE START ---
-# client = OpenAI(api_key=OPENAI_API_KEY) # Removed OpenAI client initialization
-genai.configure(api_key=GEMINI_API_KEY) # Configured Gemini API
+client = OpenAI(api_key=OPENAI_API_KEY) # Removed OpenAI client initialization
+#genai.configure(api_key=GEMINI_API_KEY) # Configured Gemini API
 # --- CHANGE END ---
 
 # Session storage
@@ -192,12 +192,16 @@ def normalize_fields(data: dict) -> dict:
 
     return normalized_data
 
-def ask_ai(question: str) -> str:
-    """Asks the AI model (Gemini) a question about the study summary."""
+# --- CHANGE START (Reverting to OpenAI) ---
+def ask_gpt(question: str) -> str: # Renamed back to ask_gpt
+    """Asks the AI model (OpenAI GPT-4) a question about the study summary."""
     try:
-        model = genai.GenerativeModel('models/gemini-1.0-pro')
-        
-        full_prompt = f"""
+        response = client.chat.completions.create(
+            model="gpt-4", # Or "gpt-3.5-turbo" if preferred
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""
 You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
 
 Below is a study summary written in IRB-approved language. Your job is to answer any natural-language question about the study accurately and supportively.
@@ -210,18 +214,21 @@ Always end your answers with:
 
 STUDY DETAILS:
 {STUDY_SUMMARY}
-
-User's question: {question}
 """
-        
-        response = model.generate_content(full_prompt)
-        
-        return response.text.strip()
+                },
+                {
+                    "role": "user",
+                    "content": question
+                }
+            ],
+            temperature=0.6,
+            max_tokens=300
+        )
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print("Gemini API error:", e)
-        if "404" in str(e) or "not found" in str(e).lower() or "not supported" in str(e).lower():
-            return "I'm sorry, I'm having trouble connecting with my AI brain right now. It might be a temporary issue or a configuration problem. Would you like to begin the quick pre-qualifier now?"
+        print("OpenAI error:", e) # Changed log message
         return "I'm here to help you learn more about the study or see if you qualify. Would you like to begin the quick pre-qualifier now?"
+# --- CHANGE END ---
 
 def handle_input(session_id: str, user_input: str, ip_address: str = None) -> str:
     """Handles incoming user input, processes questions, and manages session state."""
