@@ -21,8 +21,8 @@ from check_duplicate import check_duplicate_email
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-# FIX: Consistent variable name for Google Maps API Key
-Maps_API_KEY = os.getenv("Maps_API_KEY")
+# FIX: Use Maps_API_KEY consistently throughout
+Maps_API_KEY = os.getenv("Maps_API_KEY") 
 
 # --- CHANGE START (Reverting to OpenAI) ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -55,24 +55,30 @@ question_prompts = {
     "future_study_consent": "Would you like us to contact you about future studies? (Yes/No)"
 }
 
+# --- CRITICAL CHANGE: Completely generalize STUDY_SUMMARY ---
 STUDY_SUMMARY = """
-This clinical research study is led by Kessler Foundation in East Hanover, New Jersey. It aims to understand how exercise may improve memory and brain function in individuals with a history of moderate to severe traumatic brain injury (TBI).
+This platform helps connect individuals with clinical research studies focused on traumatic brain injury (TBI) and related conditions. These studies aim to advance medical understanding, evaluate potential new treatments, and improve outcomes for individuals affected by TBI, particularly concerning memory and brain function.
 
-To qualify, participants must:
-- Be age 18 or older
-- Have experienced a moderate to severe TBI at least one year ago
-- Be experiencing persistent memory issues
-- Be fluent in English
-- Be physically able and willing to exercise
-- Be able to undergo MRI brain scans
-- Live within 50 miles of East Hanover, NJ
+To potentially qualify for these types of studies, participants typically need to meet certain general criteria. Common criteria include:
+- Being age 18 or older
+- Having experienced a moderate to severe TBI at least one year ago
+- Experiencing persistent memory issues
+- Being fluent in English
+- Being physically able and willing to participate in study-related activities, which may include exercise-based interventions
+- Being able to undergo advanced imaging, such as MRI brain scans
+- Being able to commute to a research facility, which is often located in a specific area, for example, near East Hanover, New Jersey. (NOTE: This specific location is just an example of how location is often a factor, not a direct mention of THE study location. The bot should not emphasize this.)
 
-Participants will attend in-person visits, complete memory tests, undergo MRI scans, and engage in supervised exercise sessions.
+Typical participation may involve:
+- In-person visits to a research facility.
+- Completing various assessments, such as memory tests.
+- Undergoing advanced imaging procedures like MRI scans.
+- Engaging in supervised activities, for example, exercise sessions.
 
-Compensation is provided for time and transportation.
+Compensation is usually provided for a participant's time and travel expenses.
 
-The study is IRB approved and participation is voluntary.
+All clinical studies are reviewed and approved by independent ethical review boards (IRBs) to protect participant safety and rights. Participation is always voluntary.
 """
+# --- END CRITICAL CHANGE ---
 
 def generate_session_id() -> str:
     return str(uuid.uuid4())
@@ -190,7 +196,7 @@ def normalize_fields(data: dict) -> dict:
 
     return normalized_data
 
-# --- CHANGE START (Reverting to OpenAI) ---
+# --- CHANGE START: Modified ask_gpt system prompt for generalization ---
 def ask_gpt(question: str) -> str:
     """Asks the AI model (OpenAI GPT-4) a question about the study summary."""
     try:
@@ -201,16 +207,16 @@ def ask_gpt(question: str) -> str:
                     "role": "system",
                     "content": f"""
 You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
+Your goal is to inform users about general clinical research studies related to traumatic brain injury (TBI) and guide them through a pre-qualification process.
 
-Below is a study summary written in IRB-approved language. Your job is to answer any natural-language question about the study accurately and supportively.
-If the user asks about location, purpose, visits, eligibility, MRI, compensation, or logistics — answer with clear, friendly language based only on what is in the summary.
+Answer any natural-language question about the *general nature* of TBI studies, their typical purpose, or what participation might involve, based *only* on the provided general study details. Avoid mentioning specific study names, institutions, or precise compensation details for a particular study.
 
-If the user expresses interest or says something like “I want to participate”, invite them to start the pre-qualifier right here in the chat.
+If the user expresses interest or asks to participate, invite them to start the pre-qualification questionnaire directly in the chat.
 
 Always end your answers with:
-"Would you like to complete the quick pre-qualifier here in the chat to see if you're a match?"
+"Would you like to complete a quick pre-qualifier here in the chat to see if you might be a match for a TBI study?"
 
-STUDY DETAILS:
+GENERAL TBI STUDY DETAILS:
 {STUDY_SUMMARY}
 """
                 },
@@ -225,7 +231,7 @@ STUDY DETAILS:
         return response.choices[0].message.content.strip()
     except Exception as e:
         print("OpenAI error:", e)
-        return "I'm here to help you learn more about the study or see if you qualify. Would you like to begin the quick pre-qualifier now?"
+        return "I'm here to help you learn more about TBI studies or see if you might qualify. Would you like to begin the quick pre-qualifier now?"
 # --- CHANGE END ---
 
 def handle_input(session_id: str, user_input: str, ip_address: str = None) -> str:
@@ -251,8 +257,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         return ask_gpt(text)
     
     # --- SMS Verification and Final Submission Logic (After all questions are answered) ---
-    # This block is entered when session["step"] is equal to len(questions)
-    if session["step"] == len(questions):
+    if session["step"] == len(questions): # This ensures this block is primarily for the final stage
         if not session["verified"]: # SMS not sent or needs re-sending
             print("DEBUG: All questions answered. Attempting to send SMS for the first time immediately. (Current time: {datetime.datetime.now()})")
             phone_number = data.get("phone", "")
@@ -314,13 +319,13 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                     # Collect other disqualification reasons
                     disqualification_reasons = []
                     if not distance_ok:
-                        disqualification_reasons.append("you are located outside the eligible distance from our study site")
+                        disqualification_reasons.append("you are located outside the eligible distance from our research site") # Generalize "study site"
                     if age < 18:
                         disqualification_reasons.append("you are under 18 years old")
                     if data.get("tbi_year") != "Yes":
                         disqualification_reasons.append("you have not experienced a TBI at least one year ago")
                     if data.get("memory_issues") != "Yes":
-                        disqualification_reasons.append("you do not have persistent memory problems") # FIX: Corrected typo here
+                        disqualification_reasons.append("you do not have persistent memory problems")
                     if data.get("english_fluent") != "Yes":
                         disqualification_reasons.append("you are not fluent in English")
                     if data.get("can_exercise") != "Yes":
@@ -333,16 +338,25 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
 
                     push_to_monday(data, group, qualified, tags, ipinfo_text, MONDAY_BOARD_ID)
 
+                    final_message = ""
                     if qualified:
-                        return "✅ Your submission is now confirmed and has been received. Thank you!"
+                        # Generalize success message
+                        final_message = "✅ Thank you! Based on your answers, you may qualify for a TBI study. We will contact you soon with more details."
                     else:
-                        if "Too far" in tags and len(disqualification_reasons) == 1:
-                            return f"Thank you for your interest. Unfortunately, based on your answers, you do not meet the study criteria because {disqualification_reasons[0]}. We appreciate your time!"
-                        elif len(disqualification_reasons) > 0:
-                            reasons_str = ", and ".join([", ".join(disqualification_reasons[:-1]), disqualification_reasons[-1]]) if len(disqualification_reasons) > 1 else disqualification_reasons[0]
-                            return f"Thank you for your interest. Unfortunately, based on your answers, you do not meet the study criteria because {reasons_str}. We appreciate your time!"
+                        if len(disqualification_reasons) > 0:
+                            # FIX: Ensure proper joining for multiple reasons
+                            if len(disqualification_reasons) > 1:
+                                reasons_str = ", ".join(disqualification_reasons[:-1]) + ", and " + disqualification_reasons[-1]
+                            else:
+                                reasons_str = disqualification_reasons[0]
+                            final_message = f"Thank you for your interest. Unfortunately, based on your answers, you do not meet the current study criteria because {reasons_str}. We appreciate your time!"
                         else:
-                            return "Thank you for your interest. Unfortunately, based on your answers, you do not meet the study criteria. We appreciate your time!"
+                            final_message = "Thank you for your interest. Unfortunately, based on your answers, you do not meet the current study criteria. We appreciate your time!"
+                    
+                    # --- CRUCIAL FIX: Reset session after final message is determined ---
+                    del sessions[session_id]
+                    
+                    return final_message
 
                 except ValueError as ve:
                     print(f"❌ Qualification data error (ValueError): {ve}")
@@ -386,7 +400,7 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             if check_duplicate_email(user_value, MONDAY_BOARD_ID):
                 session["step"] = len(questions)
                 push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
-                return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
+                return "⚠️ It looks like you’ve already submitted an application for this platform. We’ll be in touch if you qualify!"
  
         # This block stores the normalized value for the current question.
         normalized_data_for_current = normalize_fields({current_question: user_value})
