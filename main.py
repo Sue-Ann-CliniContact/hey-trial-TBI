@@ -21,7 +21,7 @@ from check_duplicate import check_duplicate_email
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-Maps_API_KEY = os.getenv("Maps_API_KEY")
+Maps_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 
 # --- CHANGE START ---
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Removed OpenAI API key variable
@@ -198,7 +198,7 @@ def ask_ai(question: str) -> str:
     """Asks the AI model (Gemini) a question about the study summary."""
     try:
         # Initialize the Gemini model
-        model = genai.GenerativeModel('gemini-pro') 
+        model = genai.GenerativeModel('models/gemini-pro') 
 
         # Construct the chat message for Gemini
         # We integrate the "system" prompt directly into the user's first message for a simpler
@@ -374,11 +374,18 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         print(f"DEBUG: Current session step before increment: {session['step']}")
 
         if current_question == "email":
-            if check_duplicate_email(user_value, MONDAY_BOARD_ID):
+            email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+            if not re.match(email_regex, user_value):
+                return "⚠️ That doesn't look like a valid email address. Please provide a valid email (e.g., example@domain.com)."           
+           if check_duplicate_email(user_value, MONDAY_BOARD_ID):
                 session["step"] = len(questions)
                 push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
                 return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
-        
+ 
+        # Normalize just the current input before storing
+        normalized_data_for_current = normalize_fields({current_question: user_value})
+        data[current_question] = normalized_data_for_current.get(current_question, user_value)
+ 
         session["step"] += 1 # Increment step AFTER processing current question
         print(f"DEBUG: Session step after increment: {session['step']}")
 
