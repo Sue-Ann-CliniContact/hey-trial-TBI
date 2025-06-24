@@ -7,7 +7,12 @@ import os
 import re
 import traceback
 from typing import Dict, Any
-from openai import OpenAI
+
+# --- CHANGE START ---
+# from openai import OpenAI # Removed OpenAI import
+import google.generativeai as genai # Added Google Generative AI import
+# --- CHANGE END ---
+
 from twilio_sms import send_verification_sms, is_us_number, format_us_number
 from push_to_monday import push_to_monday
 from check_duplicate import check_duplicate_email
@@ -17,10 +22,16 @@ KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
 Maps_API_KEY = os.getenv("Maps_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# --- CHANGE START ---
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Removed OpenAI API key variable
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Added Gemini API key variable
 MONDAY_BOARD_ID = 2014579172 # Centralized Monday.com Board ID
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# --- CHANGE START ---
+# client = OpenAI(api_key=OPENAI_API_KEY) # Removed OpenAI client initialization
+genai.configure(api_key=GEMINI_API_KEY) # Configured Gemini API
+# --- CHANGE END ---
 
 # Session storage
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -181,15 +192,19 @@ def normalize_fields(data: dict) -> dict:
 
     return normalized_data
 
-def ask_gpt(question: str) -> str:
-    """Asks GPT-4 a question about the study summary."""
+# --- CHANGE START ---
+# Renamed from ask_gpt to ask_ai for generality
+def ask_ai(question: str) -> str:
+    """Asks the AI model (Gemini) a question about the study summary."""
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""
+        # Initialize the Gemini model
+        model = genai.GenerativeModel('gemini-pro') 
+
+        # Construct the chat message for Gemini
+        # We integrate the "system" prompt directly into the user's first message for a simpler
+        # one-shot generation using model.generate_content.
+        # For multi-turn conversations, you might use model.start_chat().
+        full_prompt = f"""
 You are a helpful, friendly, and smart AI assistant for a clinical trial recruitment platform.
 
 Below is a study summary written in IRB-approved language. Your job is to answer any natural-language question about the study accurately and supportively.
@@ -202,20 +217,19 @@ Always end your answers with:
 
 STUDY DETAILS:
 {STUDY_SUMMARY}
+
+User's question: {question}
 """
-                },
-                {
-                    "role": "user",
-                    "content": question
-                }
-            ],
-            temperature=0.6,
-            max_tokens=300
-        )
-        return response.choices[0].message.content.strip()
+        
+        response = model.generate_content(full_prompt)
+        
+        # Gemini's response structure typically has the text directly in .text
+        return response.text.strip()
     except Exception as e:
-        print("OpenAI error:", e)
+        print("Gemini API error:", e) # Changed log message
+        # You might want to differentiate between API errors and other exceptions
         return "I'm here to help you learn more about the study or see if you qualify. Would you like to begin the quick pre-qualifier now?"
+# --- CHANGE END ---
 
 def handle_input(session_id: str, user_input: str, ip_address: str = None) -> str:
     """Handles incoming user input, processes questions, and manages session state."""
@@ -237,7 +251,9 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
-        return ask_gpt(text)
+        # --- CHANGE START ---
+        return ask_ai(text) # Call ask_ai instead of ask_gpt
+        # --- CHANGE END ---
 
     # --- SMS Verification and Final Submission Logic (After all questions are answered) ---
     # This block is entered when session["step"] is equal to len(questions)
@@ -316,7 +332,6 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             phone_number = data.get("phone", "")
             if not phone_number:
                 print("❌ Error: Phone number missing before SMS verification attempt.")
-                # This state should ideally not be reachable if all questions are completed.
                 return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
 
             formatted_phone_number = format_us_number(phone_number)
@@ -371,20 +386,11 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         # The next call to handle_input will trigger the SMS verification block above.
         # So we just need to return the next question or signal completion here.
         if session["step"] == len(questions):
-            # No explicit return here, let the next call handle the SMS logic.
-            # This ensures the step is correctly updated.
-            pass # Continue to the final prompt return below
-
-        next_question_index = session["step"]
-        # If we have reached the end of the questions but haven't gone through SMS flow yet
-        # then the logic above will handle the SMS on the next input.
-        if next_question_index >= len(questions):
             print(f"DEBUG: All questions answered. Next input will trigger SMS/Verification. (Current time: {datetime.datetime.now()})")
             # Return a generic message indicating completion of questions, awaiting SMS.
-            # This is a fallback if the main SMS block doesn't immediately return.
-            return "Thank you for answering all the questions. Please wait while we prepare your verification." # Or a placeholder.
+            return "Thank you for answering all the questions. Please wait while we prepare your verification."
 
-
+        next_question_index = session["step"]
         print(f"DEBUG: About to get next question. Next step index: {next_question_index}")
         next_question_key = questions[next_question_index]
 
