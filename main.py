@@ -8,9 +8,9 @@ import re
 import traceback
 from typing import Dict, Any
 
-# --- CHANGE START ---
+# --- CHANGE START (Reverting to OpenAI) ---
 from openai import OpenAI
-#import google.generativeai as genai # Added Google Generative AI import#
+# import google.generativeai as genai # Removed Google Generative AI import
 # --- CHANGE END ---
 
 from twilio_sms import send_verification_sms, is_us_number, format_us_number
@@ -21,16 +21,14 @@ from check_duplicate import check_duplicate_email
 KESSLER_COORDS = (40.8255, -74.3594)
 DISTANCE_THRESHOLD_MILES = 50
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-Maps_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+# FIX: Consistent variable name for Google Maps API Key
+Maps_API_KEY = os.getenv("Maps_API_KEY")
 
-# --- CHANGE START ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Removed OpenAI API key variable
-#GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Added Gemini API key variable
+# --- CHANGE START (Reverting to OpenAI) ---
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONDAY_BOARD_ID = 2014579172 # Centralized Monday.com Board ID
 
-# --- CHANGE START ---
-client = OpenAI(api_key=OPENAI_API_KEY) # Removed OpenAI client initialization
-#genai.configure(api_key=GEMINI_API_KEY) # Configured Gemini API
+client = OpenAI(api_key=OPENAI_API_KEY)
 # --- CHANGE END ---
 
 # Session storage
@@ -134,7 +132,7 @@ def get_location_from_ip(ip_address: str) -> Dict[str, Any]:
 
 def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
     """Gets geographical coordinates for a given city and state using Google Maps Geocoding API."""
-    url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}" # Corrected variable name
+    url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}" # FIX: Use Maps_API_KEY
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -193,7 +191,7 @@ def normalize_fields(data: dict) -> dict:
     return normalized_data
 
 # --- CHANGE START (Reverting to OpenAI) ---
-def ask_gpt(question: str) -> str: # Renamed back to ask_gpt
+def ask_gpt(question: str) -> str:
     """Asks the AI model (OpenAI GPT-4) a question about the study summary."""
     try:
         response = client.chat.completions.create(
@@ -226,7 +224,7 @@ STUDY DETAILS:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print("OpenAI error:", e) # Changed log message
+        print("OpenAI error:", e)
         return "I'm here to help you learn more about the study or see if you qualify. Would you like to begin the quick pre-qualifier now?"
 # --- CHANGE END ---
 
@@ -251,11 +249,12 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
             session["step"] = 0
             return question_prompts[questions[0]]
         return ask_gpt(text)
-
+    
     # --- SMS Verification and Final Submission Logic (After all questions are answered) ---
-    if session["step"] == len(questions): # This ensures this block is primarily for the final stage
+    # This block is entered when session["step"] is equal to len(questions)
+    if session["step"] == len(questions):
         if not session["verified"]: # SMS not sent or needs re-sending
-            print("DEBUG: All questions answered. Attempting to send SMS for the first time.")
+            print("DEBUG: All questions answered. Attempting to send SMS for the first time immediately. (Current time: {datetime.datetime.now()})")
             phone_number = data.get("phone", "")
             if not phone_number:
                 print("❌ Error: Phone number missing before SMS verification attempt.")
@@ -311,14 +310,40 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                     tags = []
                     if not distance_ok:
                         tags.append("Too far")
-                    if data.get("handedness") == "Left-handed":
-                        tags.append("Left-handed")
-
+                    
+                    # Collect other disqualification reasons
+                    disqualification_reasons = []
+                    if not distance_ok:
+                        disqualification_reasons.append("you are located outside the eligible distance from our study site")
+                    if age < 18:
+                        disqualification_reasons.append("you are under 18 years old")
+                    if data.get("tbi_year") != "Yes":
+                        disqualification_reasons.append("you have not experienced a TBI at least one year ago")
+                    if data.get("memory_issues") != "Yes":
+                        disqualification_reasons.append("you do not have persistent memory problems") # FIX: Corrected typo here
+                    if data.get("english_fluent") != "Yes":
+                        disqualification_reasons.append("you are not fluent in English")
+                    if data.get("can_exercise") != "Yes":
+                        disqualification_reasons.append("you are not willing or able to exercise")
+                    if data.get("can_mri") != "Yes":
+                        disqualification_reasons.append("you are not able to undergo an MRI")
+                    
                     ip_data = get_location_from_ip(session.get("ip", ""))
                     ipinfo_text = "\n".join([f"{k}: {v}" for k, v in ip_data.items()]) if ip_data else ""
 
                     push_to_monday(data, group, qualified, tags, ipinfo_text, MONDAY_BOARD_ID)
-                    return "✅ Your submission is now confirmed and has been received. Thank you!"
+
+                    if qualified:
+                        return "✅ Your submission is now confirmed and has been received. Thank you!"
+                    else:
+                        if "Too far" in tags and len(disqualification_reasons) == 1:
+                            return f"Thank you for your interest. Unfortunately, based on your answers, you do not meet the study criteria because {disqualification_reasons[0]}. We appreciate your time!"
+                        elif len(disqualification_reasons) > 0:
+                            reasons_str = ", and ".join([", ".join(disqualification_reasons[:-1]), disqualification_reasons[-1]]) if len(disqualification_reasons) > 1 else disqualification_reasons[0]
+                            return f"Thank you for your interest. Unfortunately, based on your answers, you do not meet the study criteria because {reasons_str}. We appreciate your time!"
+                        else:
+                            return "Thank you for your interest. Unfortunately, based on your answers, you do not meet the study criteria. We appreciate your time!"
+
                 except ValueError as ve:
                     print(f"❌ Qualification data error (ValueError): {ve}")
                     traceback.print_exc()
@@ -328,10 +353,10 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                     traceback.print_exc()
                     return "⚠️ Something went wrong while confirming your submission. Please try again."
             else: # Input is NOT the verification code
-                if is_us_number(text): # User might be trying to provide a new phone number
-                    session["step"] = questions.index("phone") # Go back to phone question
-                    data["phone"] = "" # Clear phone number
-                    session["verified"] = False # Reset verified status
+                if is_us_number(text):
+                    session["step"] = questions.index("phone")
+                    data["phone"] = ""
+                    session["verified"] = False
                     print("DEBUG: User provided a number instead of code. Resetting to phone number question.")
                     return "❌ That wasn't the code. If you wish to change your number, please enter a valid 10-digit US phone number."
                 
@@ -346,16 +371,14 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
         print(f"DEBUG: Processing '{current_question}' (step {current_question_index}) with value '{user_value}'")
 
         if current_question == "phone":
-            # Add basic email validation for phone field if user re-enters
             email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-            if re.match(email_regex, user_value): # This is a check for email in phone field
+            if re.match(email_regex, user_value):
                 return "⚠️ That looks like an email address, but I need a 10-digit US phone number."
 
             if not is_us_number(user_value):
                 return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
 
         if current_question == "email":
-            # Add basic email validation here
             email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
             if not re.match(email_regex, user_value):
                 return "⚠️ That doesn't look like a valid email address. Please provide a valid email (e.g., example@domain.com)."           
@@ -365,21 +388,34 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                 push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
                 return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
  
-        # FIX: Removed the duplicated normalization lines. This block runs AFTER email validation.
-        # normalized_data_for_current = normalize_fields({current_question: user_value})
-        # data[current_question] = normalized_data_for_current.get(current_question, user_value)
- 
-        # Moved the normalization and data storage here to ensure it applies after all validations
-        # within the current_question processing block.
+        # This block stores the normalized value for the current question.
         normalized_data_for_current = normalize_fields({current_question: user_value})
         data[current_question] = normalized_data_for_current.get(current_question, user_value)
 
         session["step"] += 1
         print(f"DEBUG: Session step after increment: {session['step']}")
 
+        # --- FIX: Moved SMS trigger here to fire immediately after last question is answered ---
         if session["step"] == len(questions):
-            print(f"DEBUG: All questions answered. Next input will trigger SMS/Verification. (Current time: {datetime.datetime.now()})")
-            return "Thank you for answering all the questions. Please wait while we prepare your verification."
+            print(f"DEBUG: All questions answered. Attempting to send SMS for the first time immediately. (Current time: {datetime.datetime.now()})")
+            phone_number = data.get("phone", "")
+            if not phone_number:
+                print("❌ Error: Phone number missing before SMS verification attempt.")
+                return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
+
+            formatted_phone_number = format_us_number(phone_number)
+            success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
+            
+            if success:
+                session["verified"] = True # Mark as SMS sent
+                return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
+            else:
+                session["step"] = questions.index("phone") # Go back to phone question
+                data["phone"] = "" # Clear phone number
+                session["verified"] = False # Ensure not verified
+                print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
+                return f"❌ {error_msg} Please enter a new 10-digit US phone number."
+        # --- END FIX: SMS trigger moved ---
 
         next_question_index = session["step"]
         print(f"DEBUG: About to get next question. Next step index: {next_question_index}")
