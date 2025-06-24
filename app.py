@@ -19,7 +19,7 @@ async def start():
     Starts a new chat session and returns a session ID and a welcome message.
     """
     session_id = start_session()
-    welcome = "👋 Hi! I’m your Hey Trial AI Assistant for the Kessler TBI study. You can ask questions or begin screening when you’re ready."
+    welcome = "👋 Hi! I’m your AI Assistant for clinical research studies. You can ask questions or begin screening when you’re ready."
     return {"session_id": session_id, "message": welcome}
 
 
