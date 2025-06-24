@@ -2,6 +2,7 @@ requests
 twilio
 fastapi
 uvicorn
+google-generativeai
 flask
 openai
 phonenumbers
