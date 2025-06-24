@@ -176,7 +176,7 @@ def normalize_fields(data: dict) -> dict:
             normalized_data[key] = normalize_yes_no(val)
         elif key == "handedness":
             normalized_data[key] = normalize_handedness(val)
-        elif key == "future_study_consent": # CORRECTED LINE from previous error
+        elif key == "future_study_consent":
             normalized_data[key] = normalize_consent(val)
 
     return normalized_data
@@ -231,86 +231,23 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
     data = session["data"]
     text = user_input.strip()
 
-    # Start of conversation
+    # Start of conversation (step -1)
     if step == -1:
         lowered = text.lower()
         if any(p in lowered for p in ["yes", "start", "begin", "qualify", "participate", "sign me up", "ready"]):
             session["step"] = 0
             return question_prompts[questions[0]]
         return ask_gpt(text)
-    
-    # --- Always try to process current question first if not at verification step ---
-    # This ensures that if the step is, for example, 'phone' or 'future_study_consent',
-    # the input is first saved and step incremented BEFORE checking for SMS sending or code verification.
-    current_question_index = step
-    if current_question_index < len(questions): # Only process as a question answer if still within questions
-        try:
-            current_question = questions[current_question_index]
-            user_value = text
-            
-            print(f"DEBUG: Processing '{current_question}' (step {current_question_index}) with value '{user_value}'")
 
-            if current_question == "phone":
-                if not is_us_number(user_value):
-                    return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
-
-            if current_question == "dob":
-                try:
-                    datetime.datetime.strptime(user_value, "%Y-%m-%d")
-                except ValueError:
-                    return "⚠️ That doesn't look like a valid date format. Please use `YYYY-MM-DD` (e.g., 1990-01-20)."
-            
-            normalized_data_for_current = normalize_fields({current_question: user_value})
-            data[current_question] = normalized_data_for_current.get(current_question, user_value)
-            
-            print(f"DEBUG: Data stored for '{current_question}': {data.get(current_question)}")
-            print(f"DEBUG: Current session step before increment: {session['step']}")
-
-            if current_question == "email":
-                if check_duplicate_email(user_value, MONDAY_BOARD_ID):
-                    session["step"] = len(questions)
-                    push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
-                    return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
-            
-            session["step"] += 1 # Increment step AFTER processing current question
-            print(f"DEBUG: Session step after increment: {session['step']}")
-
-        except IndexError: # For issues with questions[current_question_index]
-            print(f"❌ IndexError: Session step {session['step']} out of bounds for questions list. (Current time: {datetime.datetime.now()})")
-            traceback.print_exc()
-            return "⚠️ An unexpected error occurred with the question sequence. Please try again."
-        except Exception as e:
-            print(f"❌ General error processing input for question '{current_question}' (step {current_question_index}) with value '{user_value}': {e} (Current time: {datetime.datetime.now()})")
-            traceback.print_exc()
-            return "⚠️ Something went wrong. Please try again."
-
-    # --- Now handle SMS verification or code input ---
-    # This block is entered IF step is now len(questions) (all questions answered)
-    # OR if step was reset to phone index due to previous SMS failure.
-    if session["step"] == len(questions): # All questions answered, time to send SMS or verify code
-        if not session["verified"]: # SMS not sent or needs re-sending
-            phone_number = data.get("phone", "")
-            if not phone_number:
-                print("❌ Error: Phone number missing before SMS verification attempt.")
-                # This state should ideally not be reachable if all questions are completed.
-                return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
-
-            formatted_phone_number = format_us_number(phone_number)
-            success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
-            
-            if success:
-                return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
-            else:
-                # SMS sending failed. Reset state to allow re-entry of phone number.
-                session["step"] = questions.index("phone") # Go back to phone question
-                data["phone"] = "" # Clear phone number to force re-entry
-                session["verified"] = False # Ensure verified is false
-                print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
-                return f"❌ {error_msg} Please enter a new 10-digit US phone number."
-        else: # session["verified"] is True, meaning SMS was previously sent, now waiting for code
-            # If user provides input while waiting for code
+    # --- SMS Verification and Final Submission Logic (After all questions are answered) ---
+    # This block is entered when session["step"] is equal to len(questions)
+    # This indicates the transition to SMS or processing a verification code/phone re-entry.
+    if session["step"] == len(questions):
+        # Scenario A: User provides a verification code (or attempts to re-enter phone after SMS was sent)
+        if session["verified"]: # SMS was sent previously, now we expect a code
+            print(f"DEBUG: Session verified, expecting code input. User input: '{text}'")
             if text == session["code"]:
-                # User provided correct code, proceed to final submission
+                # Correct code, proceed to final submission
                 try:
                     data = normalize_fields(data)
 
@@ -361,8 +298,8 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                     traceback.print_exc()
                     return "⚠️ Something went wrong while confirming your submission. Please try again."
             else: # Input is NOT the verification code
-                # If user is at verification step and inputs something other than the code
-                if is_us_number(text): # User might be trying to provide a new phone number
+                # User provided something other than the code, check if it's a new phone number
+                if is_us_number(text):
                     session["step"] = questions.index("phone") # Go back to phone question
                     data["phone"] = "" # Clear phone number
                     session["verified"] = False # Reset verified status
@@ -371,30 +308,91 @@ def handle_input(session_id: str, user_input: str, ip_address: str = None) -> st
                 
                 # If it's not a number and not the code, it's just a wrong code.
                 return "❌ That code doesn't match. Please check your SMS and enter the correct 4-digit code."
+        
+        # Scenario B: All questions answered, and SMS has NOT been sent yet.
+        # This branch will execute the *first time* session["step"] becomes len(questions).
+        else: # not session["verified"]
+            print("DEBUG: All questions answered. Attempting to send SMS for the first time.")
+            phone_number = data.get("phone", "")
+            if not phone_number:
+                print("❌ Error: Phone number missing before SMS verification attempt.")
+                # This state should ideally not be reachable if all questions are completed.
+                return "⚠️ A required piece of information (phone number) is missing for verification. Please restart the qualification."
 
-    # --- If we are here, it means we are in the middle of the question flow, and all questions
-    # have been answered for the current step. Return the next prompt.
-    next_question_index = session["step"]
-    # This `if` prevents trying to get a question beyond the list length if `session["step"]`
-    # somehow exceeds `len(questions)` after the last question is processed
-    # and the SMS sending or verification flow doesn't immediately return.
-    if next_question_index >= len(questions):
-        # This state means all questions are asked and we're just about to enter SMS flow.
-        # This branch should ideally not be hit directly for returning a question prompt
-        # if the above SMS/verification logic properly handles the len(questions) step.
-        print(f"DEBUG: All questions answered. Expecting SMS/Verification flow to handle.")
-        # Fallback for unexpected flow:
-        return "Please enter the verification code sent to your phone or provide a new phone number if SMS failed."
+            formatted_phone_number = format_us_number(phone_number)
+            success, error_msg = send_verification_sms(formatted_phone_number, session["code"])
+            
+            if success:
+                session["verified"] = True # Mark as SMS sent
+                return "Thanks! Please check your phone and enter the 4-digit code we just sent you to confirm your submission."
+            else:
+                # SMS sending failed on first attempt. Reset state to allow re-entry of phone number.
+                session["step"] = questions.index("phone") # Go back to phone question
+                data["phone"] = "" # Clear phone number
+                session["verified"] = False # Ensure not verified
+                print(f"SMS sending failed for {formatted_phone_number}: {error_msg}. Resetting for phone re-entry.")
+                return f"❌ {error_msg} Please enter a new 10-digit US phone number."
+    
+    # --- Process answers to questions step-by-step (If not in SMS/final submission phase) ---
+    # This means current_question_index is always < len(questions)
+    current_question_index = step
+    try:
+        current_question = questions[current_question_index]
+        user_value = text
+        
+        print(f"DEBUG: Processing '{current_question}' (step {current_question_index}) with value '{user_value}'")
+
+        if current_question == "phone":
+            if not is_us_number(user_value):
+                return "⚠️ That doesn't look like a valid US phone number. Please enter a 10-digit US number (e.g. 5551234567)."
+
+        if current_question == "dob":
+            try:
+                datetime.datetime.strptime(user_value, "%Y-%m-%d")
+            except ValueError:
+                return "⚠️ That doesn't look like a valid date format. Please use `YYYY-MM-DD` (e.g., 1990-01-20)."
+        
+        normalized_data_for_current = normalize_fields({current_question: user_value})
+        data[current_question] = normalized_data_for_current.get(current_question, user_value)
+        
+        print(f"DEBUG: Data stored for '{current_question}': {data.get(current_question)}")
+        print(f"DEBUG: Current session step before increment: {session['step']}")
+
+        if current_question == "email":
+            if check_duplicate_email(user_value, MONDAY_BOARD_ID):
+                session["step"] = len(questions)
+                push_to_monday({"email": user_value, "name": "Duplicate"}, "group_mkqb9ps4", False, ["Duplicate"], "", MONDAY_BOARD_ID)
+                return "⚠️ It looks like you’ve already submitted an application for this study. We’ll be in touch if you qualify!"
+        
+        session["step"] += 1 # Increment step AFTER processing current question
+        print(f"DEBUG: Session step after increment: {session['step']}")
+
+        # If after incrementing, we are now at the end of questions,
+        # The next call to handle_input will trigger the SMS verification block above.
+        # So we just need to return the next question or signal completion here.
+        if session["step"] == len(questions):
+            # No explicit return here, let the next call handle the SMS logic.
+            # This ensures the step is correctly updated.
+            pass # Continue to the final prompt return below
+
+        next_question_index = session["step"]
+        # If we have reached the end of the questions but haven't gone through SMS flow yet
+        # then the logic above will handle the SMS on the next input.
+        if next_question_index >= len(questions):
+            print(f"DEBUG: All questions answered. Next input will trigger SMS/Verification. (Current time: {datetime.datetime.now()})")
+            # Return a generic message indicating completion of questions, awaiting SMS.
+            # This is a fallback if the main SMS block doesn't immediately return.
+            return "Thank you for answering all the questions. Please wait while we prepare your verification." # Or a placeholder.
 
 
-    print(f"DEBUG: About to get next question. Next step index: {next_question_index}")
-    next_question_key = questions[next_question_index]
+        print(f"DEBUG: About to get next question. Next step index: {next_question_index}")
+        next_question_key = questions[next_question_index]
 
-    first_name = data.get("name", "").split(" ")[0] if data.get("name") else ""
-    formatted_prompt = question_prompts[next_question_key].format(name=first_name) if "{name}" in question_prompts[next_question_key] else question_prompts[next_question_key]
+        first_name = data.get("name", "").split(" ")[0] if data.get("name") else ""
+        formatted_prompt = question_prompts[next_question_key].format(name=first_name) if "{name}" in question_prompts[next_question_key] else question_prompts[next_question_key]
 
-    print(f"DEBUG: Next question key: {next_question_key}, Formatted prompt: {formatted_prompt}")
-    return formatted_prompt
+        print(f"DEBUG: Next question key: {next_question_key}, Formatted prompt: {formatted_prompt}")
+        return formatted_prompt
 
     except IndexError:
         print(f"❌ IndexError: Session step {session['step']} out of bounds for questions list. (Current time: {datetime.datetime.now()})")
