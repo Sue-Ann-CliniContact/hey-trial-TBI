@@ -30,7 +30,24 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
     def status_label(val):
         return {"label": val} if val else None
 
-    allowed_tags = ["Too far", "Left-handed", "fraudulent"]
+    # Define allowed tags for Monday.com 'dropdown' column
+    # IMPORTANT: These tags MUST exist as labels in your Monday.com dropdown column!
+    # Add any specific study interest keywords (e.g., "Diabetes", "Depression") here if they are meant for the dropdown.
+    allowed_tags = ["Too far", "Left-handed", "fraudulent", "TBI", "Diabetes", "Depression", "Asthma"]
+    
+    # --- Process study_interest_keywords and add to tags ---
+    study_interest_str = data.get("study_interest_keywords", "")
+    if study_interest_str:
+        # Split by comma, strip whitespace, and filter out empty strings
+        interest_keywords = [
+            keyword.strip() for keyword in study_interest_str.split(',') if keyword.strip()
+        ]
+        # Extend the existing tags list with these new keywords
+        # The 'filtered_tags' step below will ensure only allowed ones are sent.
+        tags.extend(interest_keywords)
+    # --- End study_interest_keywords processing ---
+
+    # Filter tags to ensure only allowed labels are sent to Monday.com dropdown
     filtered_tags = [tag for tag in tags if tag in allowed_tags]
 
     column_values = {
@@ -43,7 +60,7 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
             "text": safe(data.get("phone"))
         },
         "date": safe(data.get("dob")),
-        "text9": safe(data.get("city_state")),
+        "text9": safe(data.get("city_state")), # Assuming this is the correct column ID for City/State
         "single_select": status_label(data.get("tbi_year")),
         "single_select3": status_label(data.get("memory_issues")),
         "single_select1": status_label(data.get("english_fluent")),
@@ -52,13 +69,13 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
         "single_select9": status_label(data.get("can_mri")),
         "single_select__1": status_label(data.get("future_study_consent")),
         "boolean_mks56vyg": {"checked": qualified},
-        "dropdown": {"labels": filtered_tags},
-        "text": safe(data.get("source", "Hey Trial Bot")),
-        "long_text_mks58x7v": {"text": ipinfo_text}
+        "dropdown": {"labels": filtered_tags}, # This column will contain "Too far", "Left-handed", and study interest keywords if allowed
+        "text": safe(data.get("source", "Form Submission")), # Source field, default changed for form
+        "long_text_mks58x7v": {"text": ipinfo_text} # IP info field
     }
 
     # Monday.com API requires JSON string for column_values
-    # CORRECTED: Double-encode the JSON string to be a valid GraphQL string literal
+    # Double-encode the JSON string to be a valid GraphQL string literal
     column_values_json_escaped = json.dumps(json.dumps(column_values))
 
     mutation = {
@@ -68,7 +85,7 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
             board_id: {board_id},
             group_id: "{group_id}",
             item_name: "{safe(data.get("name", "TBI Submission"))}",
-            column_values: {column_values_json_escaped} # <--- Use the double-encoded string here
+            column_values: {column_values_json_escaped}
           ) {{
             id
           }}
@@ -77,14 +94,20 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
     }
 
     try:
+        print(f"DEBUG: Attempting to push to Monday.com Board ID: {board_id}, Group ID: {group_id}")
+        print(f"DEBUG: Monday.com Mutation Payload: {json.dumps(mutation, indent=2)}")
+        
         response = requests.post(MONDAY_API_URL, headers=headers, json=mutation)
         response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-        return response.json()
+        
+        monday_response = response.json()
+        print(f"✅ SUCCESS: Pushed to Monday.com. Response: {json.dumps(monday_response, indent=2)}")
+        return monday_response
     except requests.exceptions.HTTPError as http_err:
-        print(f"❌ HTTP error pushing to Monday: {http_err}")
+        print(f"❌ HTTP ERROR pushing to Monday: {http_err}")
         if response is not None:
-            print("Response content:", response.text)
+            print("❌ Monday API Error Response (HTTPError):", response.text)
         return {"error": str(http_err), "response_content": response.text if response else ""}
     except Exception as e:
-        print(f"❌ Failed to push to Monday: {e}")
+        print(f"❌ GENERAL ERROR pushing to Monday: {e}")
         return {"error": str(e)}
