@@ -1,7 +1,7 @@
 import os
 import requests
 import json
-import datetime # Import datetime for date formatting
+import datetime
 
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 MONDAY_API_URL = "https://api.monday.com/v2"
@@ -31,32 +31,31 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
     def status_label(val):
         return {"label": val} if val else None
 
-    # Define allowed tags for Monday.com 'dropdown' column
-    # IMPORTANT: These tags MUST exist as labels in your Monday.com dropdown column!
-    allowed_tags = ["Too far", "Left-handed", "fraudulent", "TBI", "Diabetes", "Depression", "Asthma"]
+    # Define allowed tags for Monday.com 'dropdown' column (only for things like "Too far")
+    allowed_dropdown_tags = ["Too far", "Left-handed", "fraudulent"]
     
-    study_interest_str = data.get("study_interest_keywords", "")
-    if study_interest_str:
-        interest_keywords = [
-            keyword.strip() for keyword in study_interest_str.split(',') if keyword.strip()
-        ]
-        tags.extend(interest_keywords)
+    # Process original tags (e.g., "Too far", "Left-handed") for the 'dropdown' column
+    filtered_dropdown_tags = [tag for tag in tags if tag in allowed_dropdown_tags]
 
-    filtered_tags = [tag for tag in tags if tag in allowed_tags]
+    # --- FIX: Process study_interest_keywords for the 'text' (Source) column ---
+    # Get the study interest keywords string
+    study_interest_keywords_from_data = data.get("study_interest_keywords", "").strip()
+    
+    # Determine the value for the 'text' column
+    # If study_interest_keywords is present, use that. Otherwise, default to "Form Submission".
+    source_field_value = study_interest_keywords_from_data if study_interest_keywords_from_data else "Form Submission"
+    # --- End FIX for study_interest_keywords in 'text' column ---
 
     # --- FIX: Format DOB to YYYY-MM-DD for Monday.com 'date' column ---
     formatted_dob_for_monday = None
     dob_from_data = data.get("dob")
     if dob_from_data:
         try:
-            # Parse MM/DD/YYYY
             date_obj = datetime.datetime.strptime(dob_from_data, "%m/%d/%Y").date()
-            # Format to YYYY-MM-DD
             formatted_dob_for_monday = date_obj.strftime("%Y-%m-%d")
         except ValueError:
-            print(f"WARNING: Could not parse DOB '{dob_from_data}' into MM/DD/YYYY for Monday.com formatting.")
-            # If parsing fails, send as is or skip, Monday will likely reject
-            formatted_dob_for_monday = dob_from_data
+            print(f"WARNING: Could not parse DOB '{dob_from_data}' into MM/DD/YYYY for Monday.com formatting. Sending original string.")
+            formatted_dob_for_monday = dob_from_data # Send original if parsing fails
     # --- END FIX ---
 
     column_values = {
@@ -69,7 +68,7 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
             "text": safe(data.get("phone"))
         },
         "date": formatted_dob_for_monday, # USE THE FORMATTED DOB HERE
-        "text9": safe(data.get("city_state")),
+        "text9": safe(data.get("city_state")), # Assuming this is the correct column ID for City/State
         "single_select": status_label(data.get("tbi_year")),
         "single_select3": status_label(data.get("memory_issues")),
         "single_select1": status_label(data.get("english_fluent")),
@@ -78,9 +77,9 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
         "single_select9": status_label(data.get("can_mri")),
         "single_select__1": status_label(data.get("future_study_consent")),
         "boolean_mks56vyg": {"checked": qualified},
-        "dropdown": {"labels": filtered_tags},
-        "text": safe(data.get("source", "Form Submission")),
-        "long_text_mks58x7v": {"text": ipinfo_text}
+        "dropdown": {"labels": filtered_dropdown_tags}, # Only general tags like "Too far" go here now
+        "text": safe(source_field_value), # Use the determined source value (either keywords or "Form Submission")
+        "long_text_mks58x7v": {"text": ipinfo_text} # IP info field
     }
 
     # Monday.com API requires JSON string for column_values
@@ -110,7 +109,6 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
         response.raise_for_status()
         
         monday_response = response.json()
-        # Monday.com can return 200 OK even with errors in the 'errors' array
         if monday_response.get("errors"):
             print(f"❌ MONDAY.COM API RETURNED ERRORS (but HTTP 200 OK): {json.dumps(monday_response.get('errors'), indent=2)}")
         else:
