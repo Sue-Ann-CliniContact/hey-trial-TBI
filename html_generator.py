@@ -201,7 +201,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             // Using RegExp constructor with double backslashes in the string for literal backslashes
             // Python needs \\\\ for a literal \ in JS regex
             const EMAIL_REGEX = new RegExp("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$");
-            const PHONE_REGEX = new RegExp("^\\\\(?([0-9]{{3}})\\){{0,1}}[-. ]?([0-9]{{3}})[-. ]?([0-9]{{4}})$");
+            const PHONE_REGEX = new RegExp("^[+]?1?[-. ]?\\\\(?\\\\d{{3}}\\\\)?[-. ]?\\\\d{{3}}[-. ]?\\\\d{{4}}$");
 
             // DOM Elements (declared as variables to be assigned inside DOMContentLoaded)
             let qualificationForm;
