@@ -197,9 +197,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             const BASE_URL = "{backend_base_url}";
             if (!BASE_URL) console.error("RENDER_EXTERNAL_URL environment variable not set!");
 
-            // FIX 1: Correctly escape backslashes in regexes for JavaScript string literal
-            // Using RegExp constructor with double backslashes in the string for literal backslashes
-            // Python needs \\\\ for a literal \ in JS regex
+            // FIX: Correctly escape backslashes in regexes for JavaScript string literal
             const EMAIL_REGEX = new RegExp("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$");
             const PHONE_REGEX = new RegExp("^[+]?1?[-. ]?\\\\(?\\\\d{{3}}\\\\)?[-. ]?\\\\d{{3}}[-. ]?\\\\d{{4}}$");
 
@@ -292,6 +290,11 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     const inputElement = qualificationForm.elements[field.name];
                     const container = document.getElementById(`field-${{field.name}}-container`);
                     
+                    // Add debug log to see what inputElement and container are for each field
+                    console.log(`Processing field: ${{field.name}}`); // Debug
+                    console.log(`  inputElement:`, inputElement); // Debug
+                    console.log(`  container:`, container); // Debug
+
                     if (inputElement && container) {{ // Ensure elements exist
                         // Attach validation listeners
                         if (field.validation) {{
@@ -299,11 +302,13 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             const validateAndShowError = () => {{
                                 const error = validateField(field.name, inputElement.value, field);
                                 if (errorDiv) errorDiv.textContent = error;
-                                if (inputElement.type !== 'radio') {{ // Only apply border to non-radio inputs
+                                console.log(`Validating field: ${{field.name}}, type: ${{inputElement.type}}, error: ${{!!error}}`); // More specific debug log
+                                
+                                // THIS IS THE BLOCK WHERE THE ERROR IS REPORTED TO OCCUR
+                                if (inputElement.type !== 'radio') {{
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
                                 }} else {{
-                                    // For radio buttons, apply error class to the container
                                     container.classList.toggle('border-red-500', !!error);
                                     container.classList.toggle('border-gray-300', !error);
                                 }}
