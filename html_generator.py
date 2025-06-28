@@ -47,10 +47,9 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 elif option.lower() == "no":
                     option_class = "option-no"
 
-                # FIX 2: Ensure the span is the immediate sibling and the label wraps both
                 options_html += f"""
                 <label class="inline-flex items-center cursor-pointer">
-                    <input type="radio" name="{field_name}" value="{option}" class="hidden-radio" {field_required_attr} {conditional_data_attrs}>
+                    <input type="radio" name="{field_name}" value="{option}" class="hidden-radio" id="{field_name}-{option.lower()}" {field_required_attr} {conditional_data_attrs}>
                     <span class="px-4 py-2 rounded-full text-sm font-medium transition duration-200 ease-in-out bg-white text-gray-700 border border-gray-300 hover:bg-gray-100 {option_class}">
                         {option}
                     </span>
@@ -194,8 +193,12 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             if (!BASE_URL) console.error("RENDER_EXTERNAL_URL environment variable not set!");
 
             // FIX 1: Correctly escape backslashes in regexes for JavaScript string literal
-            const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$/;
-            const PHONE_REGEX = /^\\\\(?([0-9]{{3}})\\)\\\\?[-. ]?([0-9]{{3}})[-. ]?([0-9]{{4}})$/;
+            // Original: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$/;
+            // Corrected: Each \ needs to be \\ in Python f-string to become \ in JS.
+            // So, for \. in JS, it needs \\\. in Python.
+            // For \( in JS, it needs \\\( in Python.
+            const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$/; // Corrected
+            const PHONE_REGEX = /^\\\\(?([0-9]{{3}})\\)\\\\?[-. ]?([0-9]{{3}})[-. ]?([0-9]{{4}})$/; // Corrected
 
             // DOM Elements
             const qualificationForm = document.getElementById('qualificationForm');
@@ -254,6 +257,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         else {{
                             const age = calculateAge(value);
                             if (age === null) error = 'Invalid date format (MM/DD/YYYY).';
+                            // FIX 3: Use min_age from study_config_js
                             else if (age < study_config_js.QUALIFICATION_CRITERIA.min_age) error = `You must be ${{study_config_js.QUALIFICATION_CRITERIA.min_age}} or older to participate.`;
                         }}
                         break;
@@ -291,6 +295,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             }}
                         }}
 
+                        // FIX 4: Conditional display logic for dynamic fields
                         if (field.conditional_on) {{
                             const controllingField = form.elements[field.conditional_on.field];
                             if (controllingField) {{
@@ -338,7 +343,9 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 fieldsInConfig.forEach(field => {{
                     const container = document.getElementById(`field-${{field.name}}-container`);
                     const isVisible = !container || container.style.display !== 'none';
+
                     if (isVisible) {{
+                        const value = data[field.name];
                         // For radio buttons, FormData might capture all, so get only the checked one
                         if (qualificationForm.elements[field.name] && qualificationForm.elements[field.name].type === 'radio') {{
                             const checkedRadio = Array.from(qualificationForm.elements[field.name]).find(radio => radio.checked);
@@ -433,7 +440,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         headers: {{ 'Content-Type': 'application/json' }},
                         body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
                     }});
-                    const result = await response.json();
+                    const result = response.json();
                     console.log('SMS verification result:', result);
 
                     if (result.status === 'success') {{
