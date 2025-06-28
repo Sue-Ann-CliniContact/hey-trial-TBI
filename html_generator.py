@@ -125,12 +125,18 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             input.border-red-500, select.border-red-500, textarea.border-red-500 {{
                 border-color: #EF4444 !important;
             }}
-            /* Hide default radio buttons */
+            /* Hide default radio buttons - REVISED */
             input[type="radio"].hidden {{
                 position: absolute;
                 opacity: 0;
-                width: 0;
-                height: 0;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border-width: 0;
             }}
         </style>
     </head>
@@ -190,9 +196,9 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             const BASE_URL = "{backend_base_url}";
             if (!BASE_URL) console.error("RENDER_EXTERNAL_URL environment variable not set!");
 
-            // FIX: Double-escape backslashes in regexes for JavaScript string literal
+            // FIX 1: Double-escape backslashes in regexes for JavaScript string literal
             const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$/;
-            const PHONE_REGEX = /^\\(?([0-9]{{3}})\\)?[-. ]?([0-9]{{3}})[-. ]?([0-9]{{4}})$/;
+            const PHONE_REGEX = /^\\\\\\(?([0-9]{{3}})\\)\\\\?[-. ]?([0-9]{{3}})[-. ]?([0-9]{{4}})$/;
 
             // DOM Elements
             const qualificationForm = document.getElementById('qualificationForm');
@@ -249,7 +255,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         else {{
                             const age = calculateAge(value);
                             if (age === null) error = 'Invalid date format (MM/DD/YYYY).';
-                            // FIX: Use min_age from study_config_js
+                            // FIX 3: Use min_age from study_config_js
                             else if (age < study_config_js.QUALIFICATION_CRITERIA.min_age) error = `You must be ${{study_config_js.QUALIFICATION_CRITERIA.min_age}} or older to participate.`;
                         }}
                         break;
@@ -279,6 +285,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             inputElement.addEventListener('input', validateAndShowError);
                         }}
 
+                        // FIX 4: Conditional display logic for dynamic fields
                         if (field.conditional_on) {{
                             const controllingField = form.elements[field.conditional_on.field];
                             const targetElement = document.getElementById(`field-${{field.name}}-container`);
@@ -403,7 +410,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         headers: {{ 'Content-Type': 'application/json' }},
                         body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
                     }});
-                    const result = await response.json();
+                    const result = response.json();
                     console.log('SMS verification result:', result);
 
                     if (result.status === 'success') {{
