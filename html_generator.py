@@ -158,7 +158,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 <span id="generalErrorMessage" class="block sm:inline ml-2"></span>
             </div>
 
-            <form id="qualificationForm">
+            <form id="qualificationForm" method="POST">
                 <input type="hidden" name="study_id" value="{study_id}">
                 {form_fields_html}
                 
