@@ -2,6 +2,7 @@
 
 import json
 import os
+import re # Import re for regex escaping
 from typing import Dict, Any
 
 def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
@@ -48,6 +49,8 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 elif option.lower() == "no":
                     option_class = "option-no"
 
+                # FIX 2: Ensure the span is the immediate sibling and the label wraps both
+                # Use a unique ID for each radio option for better accessibility and targeting
                 options_html += f"""
                 <label class="inline-flex items-center cursor-pointer mr-4">
                     <input type="radio" name="{field_name}" value="{option}" class="hidden-radio" id="{field_name}-{option.lower()}" {field_required_attr}>
@@ -199,23 +202,23 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             if (!BASE_URL) console.error("RENDER_EXTERNAL_URL environment variable not set!");
 
             // FIX 1: Correctly escape backslashes in regexes for JavaScript string literal
-            // Python needs \\\\ for a literal \ in JS regex
-            const EMAIL_REGEX = new RegExp("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{{2,}}$");
+            // Using RegExp constructor with double backslashes in the string for literal backslashes
+            const EMAIL_REGEX = new RegExp("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$");
             const PHONE_REGEX = new RegExp("^\\\\(?([0-9]{{3}})\\)\\\\?[-. ]?([0-9]{{3}})[-. ]?([0-9]{{4}})$");
 
-            // DOM Elements
-            const qualificationForm = document.getElementById('qualificationForm');
-            const submitButton = document.getElementById('submitButton');
-            const generalErrorDiv = document.getElementById('generalError');
-            const generalErrorMessageSpan = document.getElementById('generalErrorMessage');
-            const smsVerifySection = document.getElementById('smsVerifySection');
-            const smsVerifyMessageP = document.getElementById('smsVerifyMessage');
-            const smsCodeInput = document.getElementById('smsCodeInput');
-            const smsCodeErrorP = document.getElementById('smsCodeError');
-            const verifyCodeButton = document.getElementById('verifyCodeButton');
-            const resultSection = document.getElementById('resultSection');
-            const resultMessageP = document.getElementById('resultMessage');
-            const startNewButton = document.getElementById('startNewButton');
+            // DOM Elements (get them once DOMContentLoaded)
+            let qualificationForm;
+            let submitButton;
+            let generalErrorDiv;
+            let generalErrorMessageSpan;
+            let smsVerifySection;
+            let smsVerifyMessageP;
+            let smsCodeInput;
+            let smsCodeErrorP;
+            let verifyCodeButton;
+            let resultSection;
+            let resultMessageP;
+            let startNewButton;
 
             let currentSubmissionId = null;
 
@@ -269,11 +272,24 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             }}
 
             document.addEventListener('DOMContentLoaded', function() {{
-                const form = document.getElementById('qualificationForm');
+                // FIX 4: Get DOM elements here when the DOM is ready
+                qualificationForm = document.getElementById('qualificationForm');
+                submitButton = document.getElementById('submitButton');
+                generalErrorDiv = document.getElementById('generalError');
+                generalErrorMessageSpan = document.getElementById('generalErrorMessage');
+                smsVerifySection = document.getElementById('smsVerifySection');
+                smsVerifyMessageP = document.getElementById('smsVerifyMessage');
+                smsCodeInput = document.getElementById('smsCodeInput');
+                smsCodeErrorP = document.getElementById('smsCodeError');
+                verifyCodeButton = document.getElementById('verifyCodeButton');
+                resultSection = document.getElementById('resultSection');
+                resultMessageP = document.getElementById('resultMessage');
+                startNewButton = document.getElementById('startNewButton');
+
                 const fields = study_config_js.FORM_FIELDS; // Use study_config_js here
 
                 fields.forEach(field => {{
-                    const inputElement = form.elements[field.name];
+                    const inputElement = qualificationForm.elements[field.name];
                     const container = document.getElementById(`field-${{field.name}}-container`);
                     
                     if (inputElement && container) {{ // Ensure elements exist
@@ -296,7 +312,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             inputElement.addEventListener('input', validateAndShowError);
                             // For radio buttons, attach listener to all in group for immediate validation feedback
                             if (inputElement.type === 'radio') {{
-                                Array.from(form.elements[field.name]).forEach(radio => {{
+                                Array.from(qualificationForm.elements[field.name]).forEach(radio => {{
                                     radio.addEventListener('change', validateAndShowError);
                                 }});
                             }}
@@ -304,7 +320,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
                         // FIX 4: Conditional display logic for dynamic fields
                         if (field.conditional_on) {{
-                            const controllingFieldElements = form.elements[field.conditional_on.field]; // Get all elements by name
+                            const controllingFieldElements = qualificationForm.elements[field.conditional_on.field]; // Get all elements by name
                             if (controllingFieldElements) {{
                                 const updateVisibility = () => {{
                                     let controllingValue;
@@ -321,7 +337,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                     if (!isVisible) {{
                                         // Clear value and errors if hidden
                                         if (inputElement.type === 'radio') {{
-                                            Array.from(form.elements[field.name]).forEach(radio => radio.checked = false);
+                                            Array.from(qualificationForm.elements[field.name]).forEach(radio => radio.checked = false);
                                         }} else {{
                                             inputElement.value = '';
                                         }}
@@ -346,58 +362,59 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         }}
                     }}
                 }});
-            }});
 
-            qualificationForm.addEventListener('submit', async function(event) {{
-                event.preventDefault(); // Prevent default form submission (Crucial for POST)
-                generalErrorDiv.classList.add('hidden');
-                generalErrorMessageSpan.textContent = '';
+                // FIX 5: Attach form submit listener here
+                qualificationForm.addEventListener('submit', async function(event) {{
+                    event.preventDefault(); // Prevent default form submission (Crucial for POST)
+                    generalErrorDiv.classList.add('hidden');
+                    generalErrorMessageSpan.textContent = '';
 
-                const formData = new FormData(qualificationForm);
-                const data = {{}};
-                // FIX 5: Collect data only from visible fields for submission
-                const fieldsInConfig = study_config_js.FORM_FIELDS;
-                fieldsInConfig.forEach(field => {{
-                    const container = document.getElementById(`field-${{field.name}}-container`);
-                    const isVisible = !container || container.style.display !== 'none';
+                    const formData = new FormData(qualificationForm);
+                    const data = {{}};
+                    // FIX 5: Collect data only from visible fields for submission
+                    const fieldsInConfig = study_config_js.FORM_FIELDS;
+                    fieldsInConfig.forEach(field => {{
+                        const container = document.getElementById(`field-${{field.name}}-container`);
+                        const isVisible = !container || container.style.display !== 'none';
 
-                    if (isVisible) {{
-                        // For radio buttons, FormData might capture all, so get only the checked one
-                        if (qualificationForm.elements[field.name] && qualificationForm.elements[field.name].type === 'radio') {{
-                            const checkedRadio = Array.from(qualificationForm.elements[field.name]).find(radio => radio.checked);
-                            data[field.name] = checkedRadio ? checkedRadio.value : '';
-                        }} else {{
-                            data[field.name] = formData.get(field.name);
-                        }}
-                    }}
-                }});
-
-                data.study_id = qualificationForm.elements['study_id'].value;
-
-                let allFieldsValid = true;
-                // FIX 5: Validate only visible fields
-                fieldsInConfig.forEach(field => {{
-                    const inputElement = qualificationForm.elements[field.name];
-                    const container = document.getElementById(`field-${{field.name}}-container`);
-                    const isVisible = !container || container.style.display !== 'none';
-
-                    if (isVisible) {{
-                        const value = data[field.name];
-                        const error = validateField(field.name, value, field);
-                        const errorDiv = document.getElementById(`${{field.name}}Error`);
-                        if (errorDiv) errorDiv.textContent = error;
-                        const inputElement = qualificationForm.elements[field.name];
-                        if (inputElement) {{
-                            if (inputElement.type !== 'radio') {{ // Only apply border to non-radio inputs
-                                inputElement.classList.toggle('border-red-500', !!error);
-                                inputElement.classList.toggle('border-gray-300', !error);
+                        if (isVisible) {{
+                            const value = data[field.name];
+                            // For radio buttons, FormData might capture all, so get only the checked one
+                            if (qualificationForm.elements[field.name] && qualificationForm.elements[field.name].type === 'radio') {{
+                                const checkedRadio = Array.from(qualificationForm.elements[field.name]).find(radio => radio.checked);
+                                data[field.name] = checkedRadio ? checkedRadio.value : '';
                             }} else {{
-                                // For radio buttons, apply error class to the container
-                                container.classList.toggle('border-red-500', !!error);
-                                container.classList.toggle('border-gray-300', !error);
+                                data[field.name] = formData.get(field.name);
                             }}
                         }}
-                        if (error) allFieldsValid = false;
+                    }});
+
+                    data.study_id = qualificationForm.elements['study_id'].value;
+
+                    let allFieldsValid = true;
+                    // FIX 5: Validate only visible fields
+                    fieldsInConfig.forEach(field => {{
+                        const inputElement = qualificationForm.elements[field.name];
+                        const container = document.getElementById(`field-${{field.name}}-container`);
+                        const isVisible = !container || container.style.display !== 'none';
+
+                        if (isVisible) {{
+                            const value = data[field.name];
+                            const error = validateField(field.name, value, field);
+                            const errorDiv = document.getElementById(`${{field.name}}Error`);
+                            if (errorDiv) errorDiv.textContent = error;
+                            if (inputElement) {{
+                                if (inputElement.type !== 'radio') {{ // Only apply border to non-radio inputs
+                                    inputElement.classList.toggle('border-red-500', !!error);
+                                    inputElement.classList.toggle('border-gray-300', !error);
+                                }} else {{
+                                    // For radio buttons, apply error class to the container
+                                    container.classList.toggle('border-red-500', !!error);
+                                    container.classList.toggle('border-gray-300', !error);
+                                }}
+                            }}
+                            if (error) allFieldsValid = false;
+                        }}
                     }}
                 }});
 
