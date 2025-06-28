@@ -11,17 +11,20 @@ headers = {
     "Content-Type": "application/json"
 }
 
-def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinfo_text: str, board_id: int) -> dict:
+# FIX: Add monday_column_mappings and dropdown_allowed_tags to function signature
+def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinfo_text: str, board_id: int,
+                   monday_column_mappings: Dict[str, str], dropdown_allowed_tags: list) -> dict:
     """
-    Pushes data to Monday.com board.
+    Pushes data to Monday.com board using dynamic column mappings.
     Args:
-        data (dict): Dictionary containing user data.
+        data (dict): Dictionary containing user data (form fields).
         group_id (str): The Monday.com group ID to add the item to.
         qualified (bool): Whether the applicant qualified.
-        tags (list): A list of tags to apply (e.g., ["Too far", "Left-handed"]).
-                     Only valid tags for the 'dropdown' column should be passed.
+        tags (list): A list of tags (e.g., ["Too far", "Left-handed"]).
         ipinfo_text (str): Formatted IP information text.
         board_id (int): The Monday.com board ID.
+        monday_column_mappings (Dict[str, str]): Mapping of form field names to Monday.com column IDs.
+        dropdown_allowed_tags (list): List of allowed labels for the 'dropdown' column on Monday.com.
     Returns:
         dict: The JSON response from Monday.com API or an error dictionary.
     """
@@ -31,22 +34,14 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
     def status_label(val):
         return {"label": val} if val else None
 
-    # Define allowed tags for Monday.com 'dropdown' column (only for things like "Too far")
-    allowed_dropdown_tags = ["Too far", "Left-handed", "fraudulent"]
-    
-    # Process original tags (e.g., "Too far", "Left-handed") for the 'dropdown' column
-    filtered_dropdown_tags = [tag for tag in tags if tag in allowed_dropdown_tags]
+    # Filter tags based on the allowed tags from the config
+    filtered_dropdown_tags = [tag for tag in tags if tag in dropdown_allowed_tags]
 
-    # --- FIX: Process study_interest_keywords for the 'text' (Source) column ---
-    # Get the study interest keywords string
+    # --- Process study_interest_keywords for the 'text' (Source) column ---
     study_interest_keywords_from_data = data.get("study_interest_keywords", "").strip()
-    
-    # Determine the value for the 'text' column
-    # If study_interest_keywords is present, use that. Otherwise, default to "Form Submission".
     source_field_value = study_interest_keywords_from_data if study_interest_keywords_from_data else "Form Submission"
-    # --- End FIX for study_interest_keywords in 'text' column ---
 
-    # --- FIX: Format DOB to YYYY-MM-DD for Monday.com 'date' column ---
+    # --- Format DOB to YYYY-MM-DD for Monday.com 'date' column ---
     formatted_dob_for_monday = None
     dob_from_data = data.get("dob")
     if dob_from_data:
@@ -55,35 +50,52 @@ def push_to_monday(data: dict, group_id: str, qualified: bool, tags: list, ipinf
             formatted_dob_for_monday = date_obj.strftime("%Y-%m-%d")
         except ValueError:
             print(f"WARNING: Could not parse DOB '{dob_from_data}' into MM/DD/YYYY for Monday.com formatting. Sending original string.")
-            formatted_dob_for_monday = dob_from_data # Send original if parsing fails
-    # --- END FIX ---
+            formatted_dob_for_monday = dob_from_data
 
-    column_values = {
-        "email": {
-            "email": safe(data.get("email")),
-            "text": safe(data.get("email"))
-        },
-        "phone": {
-            "phone": safe(data.get("phone")),
-            "text": safe(data.get("phone"))
-        },
-        "date": formatted_dob_for_monday, # USE THE FORMATTED DOB HERE
-        "text9": safe(data.get("city_state")), # Assuming this is the correct column ID for City/State
-        "single_select": status_label(data.get("tbi_year")),
-        "single_select3": status_label(data.get("memory_issues")),
-        "single_select1": status_label(data.get("english_fluent")),
-        "single_select7": status_label(data.get("handedness")),
-        "single_select0": status_label(data.get("can_exercise")),
-        "single_select9": status_label(data.get("can_mri")),
-        "single_select__1": status_label(data.get("future_study_consent")),
-        "boolean_mks56vyg": {"checked": qualified},
-        "dropdown": {"labels": filtered_dropdown_tags}, # Only general tags like "Too far" go here now
-        "text": safe(source_field_value), # Use the determined source value (either keywords or "Form Submission")
-        "long_text_mks58x7v": {"text": ipinfo_text} # IP info field
-    }
+    # --- Dynamically build column_values using monday_column_mappings ---
+    column_values = {}
+    for form_field, monday_column_id in monday_column_mappings.items():
+        value = data.get(form_field)
+        
+        # Handle specific column types as per Monday.com API requirements
+        if monday_column_id == "email":
+            column_values[monday_column_id] = {
+                "email": safe(value),
+                "text": safe(value)
+            }
+        elif monday_column_id == "phone":
+            column_values[monday_column_id] = {
+                "phone": safe(value),
+                "text": safe(value)
+            }
+        elif monday_column_id == "date":
+            # This is handled separately by formatted_dob_for_monday
+            column_values[monday_column_id] = formatted_dob_for_monday
+        elif monday_column_id.startswith("single_select"): # For single select columns
+            column_values[monday_column_id] = status_label(value)
+        elif monday_column_id == "boolean_mks56vyg": # For the qualified checkbox
+            column_values[monday_column_id] = {"checked": qualified}
+        # FIX: Map 'study_interest_keywords' to the 'text' column if specified in mappings
+        elif monday_column_id == "text" and form_field == "study_interest_keywords":
+            column_values[monday_column_id] = safe(source_field_value)
+        # Handle the dropdown column for general tags
+        elif monday_column_id == "dropdown":
+            column_values[monday_column_id] = {"labels": filtered_dropdown_tags}
+        elif monday_column_id == "long_text_mks58x7v": # For IP info
+            column_values[monday_column_id] = {"text": ipinfo_text}
+        else:
+            # Default for other text/number columns not explicitly handled
+            column_values[monday_column_id] = safe(value)
+    
+    # Ensure mandatory fields like 'text' (source) and 'long_text_mks58x7v' (IP) are always included
+    # even if not explicitly in MONDAY_COLUMN_MAPPINGS for this study.
+    # This assumes 'text' is the source column and 'long_text_mks58x7v' is the IP column.
+    if "text" not in monday_column_mappings.values():
+        column_values["text"] = safe(source_field_value)
+    if "long_text_mks58x7v" not in monday_column_mappings.values():
+        column_values["long_text_mks58x7v"] = {"text": ipinfo_text}
 
     # Monday.com API requires JSON string for column_values
-    # Double-encode the JSON string to be a valid GraphQL string literal
     column_values_json_escaped = json.dumps(json.dumps(column_values))
 
     mutation = {
