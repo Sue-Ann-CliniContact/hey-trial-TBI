@@ -203,10 +203,11 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
             // FIX 1: Correctly escape backslashes in regexes for JavaScript string literal
             // Using RegExp constructor with double backslashes in the string for literal backslashes
+            // Python needs \\\\ for a literal \ in JS regex
             const EMAIL_REGEX = new RegExp("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$");
             const PHONE_REGEX = new RegExp("^\\\\(?([0-9]{{3}})\\)\\\\?[-. ]?([0-9]{{3}})[-. ]?([0-9]{{4}})$");
 
-            // DOM Elements (get them once DOMContentLoaded)
+            // DOM Elements (declared as variables to be assigned inside DOMContentLoaded)
             let qualificationForm;
             let submitButton;
             let generalErrorDiv;
@@ -387,34 +388,34 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                 data[field.name] = formData.get(field.name);
                             }}
                         }}
-                    }});
+                    }}
+                }});
 
-                    data.study_id = qualificationForm.elements['study_id'].value;
+                data.study_id = qualificationForm.elements['study_id'].value;
 
-                    let allFieldsValid = true;
-                    // FIX 5: Validate only visible fields
-                    fieldsInConfig.forEach(field => {{
-                        const inputElement = qualificationForm.elements[field.name];
-                        const container = document.getElementById(`field-${{field.name}}-container`);
-                        const isVisible = !container || container.style.display !== 'none';
+                let allFieldsValid = true;
+                // FIX 5: Validate only visible fields
+                fieldsInConfig.forEach(field => {{
+                    const inputElement = qualificationForm.elements[field.name];
+                    const container = document.getElementById(`field-${{field.name}}-container`);
+                    const isVisible = !container || container.style.display !== 'none';
 
-                        if (isVisible) {{
-                            const value = data[field.name];
-                            const error = validateField(field.name, value, field);
-                            const errorDiv = document.getElementById(`${{field.name}}Error`);
-                            if (errorDiv) errorDiv.textContent = error;
-                            if (inputElement) {{
-                                if (inputElement.type !== 'radio') {{ // Only apply border to non-radio inputs
-                                    inputElement.classList.toggle('border-red-500', !!error);
-                                    inputElement.classList.toggle('border-gray-300', !error);
-                                }} else {{
-                                    // For radio buttons, apply error class to the container
-                                    container.classList.toggle('border-red-500', !!error);
-                                    container.classList.toggle('border-gray-300', !error);
-                                }}
+                    if (isVisible) {{
+                        const value = data[field.name];
+                        const error = validateField(field.name, value, field);
+                        const errorDiv = document.getElementById(`${{field.name}}Error`);
+                        if (errorDiv) errorDiv.textContent = error;
+                        if (inputElement) {{
+                            if (inputElement.type !== 'radio') {{ // Only apply border to non-radio inputs
+                                inputElement.classList.toggle('border-red-500', !!error);
+                                inputElement.classList.toggle('border-gray-300', !error);
+                            }} else {{
+                                // For radio buttons, apply error class to the container
+                                container.classList.toggle('border-red-500', !!error);
+                                container.classList.toggle('border-gray-300', !error);
                             }}
-                            if (error) allFieldsValid = false;
                         }}
+                        if (error) allFieldsValid = false;
                     }}
                 }});
 
