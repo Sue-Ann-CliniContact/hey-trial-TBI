@@ -93,13 +93,19 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             .fade-in {{
                 animation: fadeIn 0.5s ease-in-out;
             }}
-            /* FIX 2: Hide default radio buttons - REVISED AND SIMPLIFIED */
+            /* Hide default radio buttons */
             .hidden-radio {{
                 position: absolute;
                 opacity: 0;
-                width: 0;
-                height: 0;
-                pointer-events: none; /* Prevent interaction */
+                width: 1px; /* Smallest possible visible size for accessibility */
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border-width: 0;
+                pointer-events: none; /* Ensure no interaction with hidden element */
             }}
             /* Custom styles for radio buttons to appear colored */
             /* Target the span sibling of the hidden radio input */
@@ -244,12 +250,10 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 switch (fieldConfig.validation) {{
                     case 'email':
                         if (!value.trim()) error = fieldConfig.required ? 'Email is required.' : '';
-                        // FIX 1: Use the correctly escaped EMAIL_REGEX
                         else if (!EMAIL_REGEX.test(value)) error = 'Invalid email format.';
                         break;
                     case 'phone':
                         if (!value.trim()) error = fieldConfig.required ? 'Phone number is required.' : '';
-                        // FIX 1: Use the correctly escaped PHONE_REGEX
                         else if (!PHONE_REGEX.test(value)) error = 'Invalid US phone number (e.g., 5551234567).';
                         break;
                     case 'dob_age':
@@ -450,8 +454,6 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     }} else if (result.status === 'invalid_code') {{
                         smsCodeErrorP.textContent = result.message;
                     }} else if (result.status === 'error') {{
-                        smsCodeErrorP.textContent = result.message;
-                    }} else {{
                         smsCodeErrorP.textContent = 'An unexpected response was received.';
                     }}
                 }} catch (err) {{
