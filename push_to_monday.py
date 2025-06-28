@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import datetime
+from typing import Dict
 
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 MONDAY_API_URL = "https://api.monday.com/v2"
