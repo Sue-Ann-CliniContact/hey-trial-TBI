@@ -81,7 +81,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{study_config.get("FORM_TITLE", "Qualification Form")}</title>
+        <title>{{study_config.get("FORM_TITLE", "Qualification Form")}}</title>
         
         <link rel="icon" href="{backend_base_url}/static/images/favicon.png" type="image/png"> 
 
@@ -150,7 +150,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             </div>
 
             <h2 class="text-3xl font-extrabold text-gray-900 text-center mb-6">
-                {study_config.get("FORM_TITLE", "Qualify for Studies")}
+                {{study_config.get("FORM_TITLE", "Qualify for Studies")}}
             </h2>
 
             <div id="generalError" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6 hidden" role="alert">
@@ -360,7 +360,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     }}
                 }});
 
-                // FIX 5: Attach form submit listener here
+                // This is the *ONLY* form submit listener
                 qualificationForm.addEventListener('submit', async function(event) {{
                     event.preventDefault(); // Prevent default form submission (Crucial for POST)
                     generalErrorDiv.classList.add('hidden');
