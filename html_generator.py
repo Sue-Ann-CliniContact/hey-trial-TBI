@@ -81,7 +81,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{{study_config.get("FORM_TITLE", "Qualification Form")}}</title>
+        <title>{study_config.get("FORM_TITLE", "Qualification Form")}</title>
         
         <link rel="icon" href="{backend_base_url}/static/images/favicon.png" type="image/png"> 
 
@@ -150,7 +150,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             </div>
 
             <h2 class="text-3xl font-extrabold text-gray-900 text-center mb-6">
-                {{study_config.get("FORM_TITLE", "Qualify for Studies")}}
+                {study_config.get("FORM_TITLE", "Qualify for Studies")}
             </h2>
 
             <div id="generalError" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6 hidden" role="alert">
@@ -265,11 +265,14 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         if (fieldConfig.required && !value.trim()) error = `${{fieldConfig.label}} is required.`;
                         break;
                 }}
+                if (error) {{
+                    console.error(`Validation Error for ${{name}}: ${{error}}`); // Added debug log
+                }}
                 return error;
             }}
 
             document.addEventListener('DOMContentLoaded', function() {{
-                // FIX 4: Get DOM elements here when the DOM is ready
+                console.log('DOM Content Loaded. Initializing form elements...'); // Debug log
                 qualificationForm = document.getElementById('qualificationForm');
                 submitButton = document.getElementById('submitButton');
                 generalErrorDiv = document.getElementById('generalError');
@@ -362,7 +365,9 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
                 // This is the *ONLY* form submit listener
                 qualificationForm.addEventListener('submit', async function(event) {{
+                    console.log('Form submission initiated.'); // Debug log
                     event.preventDefault(); // Prevent default form submission (Crucial for POST)
+                    console.log('event.preventDefault() called.'); // Debug log
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
 
@@ -417,9 +422,11 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     if (!allFieldsValid) {{
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'Please correct the errors in the form.';
+                        console.log('Form validation failed. Not submitting.'); // Debug log
                         return; // Stop submission if validation fails
                     }}
 
+                    console.log('Form validated. Attempting fetch...'); // Debug log
                     submitButton.disabled = true;
                     submitButton.textContent = 'Submitting...';
 
@@ -430,36 +437,42 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             body: JSON.stringify(data), // Send the collected 'data' object
                         }});
                         const result = await response.json(); // AWAIT the JSON parsing
-                        console.log('Form submission result:', result);
+                        console.log('Form submission fetch result:', result); // Debug log
 
                         if (result.status === 'sms_required') {{
                             currentSubmissionId = result.submission_id;
                             smsVerifyMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.remove('hidden');
+                            console.log('SMS verification required. Displaying SMS section.'); // Debug log
                         }} else if (result.status === 'qualified' || result.status === 'disqualified_no_capture' || result.status === 'duplicate') {{
                             resultMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.add('hidden'); // Ensure SMS section is hidden
                             resultSection.classList.remove('hidden');
+                            console.log('Submission complete. Displaying result section.'); // Debug log
                         }} else if (result.status === 'error') {{
                             generalErrorDiv.classList.remove('hidden');
                             generalErrorMessageSpan.textContent = result.message;
+                            console.error('Submission returned an error:', result.message); // Debug log
                         }} else {{
                             generalErrorDiv.classList.remove('hidden');
                             generalErrorMessageSpan.textContent = 'An unexpected response was received.';
+                            console.error('Submission returned unexpected status:', result.status); // Debug log
                         }}
                     }} catch (err) {{
-                        console.error('Error submitting form:', err);
+                        console.error('Error during form submission fetch:', err); // More specific debug log
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
                     }} finally {{
                         submitButton.disabled = false;
                         submitButton.textContent = 'Submit Qualification';
+                        console.log('Submission process finished.'); // Debug log
                     }}
                 }});
 
                 verifyCodeButton.addEventListener('click', async function() {{
+                    console.log('Verify code button clicked.'); // Debug log
                     smsCodeErrorP.textContent = '';
                     const code = smsCodeInput.value.trim();
                     if (!code || code.length !== 4) {{
@@ -477,29 +490,35 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
                         }});
                         const result = await response.json(); // AWAIT the JSON parsing
-                        console.log('SMS verification result:', result);
+                        console.log('SMS verification fetch result:', result); // Debug log
 
                         if (result.status === 'success') {{
                             resultMessageP.textContent = result.message;
                             smsVerifySection.classList.add('hidden');
                             resultSection.classList.remove('hidden');
+                            console.log('SMS verification successful.'); // Debug log
                         }} else if (result.status === 'invalid_code') {{
                             smsCodeErrorP.textContent = result.message;
+                            console.log('SMS verification: Invalid code.'); // Debug log
                         }} else if (result.status === 'error') {{
                             smsCodeErrorP.textContent = 'A network error occurred during verification. Please try again.';
+                            console.error('SMS verification returned an error:', result.message); // Debug log
                         }} else {{
                             smsCodeErrorP.textContent = 'An unexpected response was received.';
+                            console.error('SMS verification returned unexpected status:', result.status); // Debug log
                         }}
                     }} catch (err) {{
-                        console.error('Error verifying SMS:', err);
+                        console.error('Error during SMS verification fetch:', err); // More specific debug log
                         smsCodeErrorP.textContent = 'A network error occurred during verification. Please try again.';
                     }} finally {{
                         verifyCodeButton.disabled = false;
                         verifyCodeButton.textContent = 'Verify Code';
+                        console.log('SMS verification process finished.'); // Debug log
                     }}
                 }});
 
                 startNewButton.addEventListener('click', function() {{
+                    console.log('Start New Qualification button clicked. Resetting form.'); // Debug log
                     qualificationForm.reset();
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
