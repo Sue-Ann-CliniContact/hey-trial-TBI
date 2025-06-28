@@ -219,7 +219,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
             let currentSubmissionId = null;
 
-            function calculateAge(dobString) {
+            function calculateAge(dobString) {{
                 if (!dobString) return null;
                 const parts = dobString.split('/');
                 if (parts.length !== 3) return null;
@@ -227,24 +227,24 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 const day = parseInt(parts[1], 10);
                 const year = parseInt(parts[2], 10);
 
-                if (isNaN(month) || isNaN(day) || isNaN(year) || month < 1 || month > 12 || day < 1 || day > 31 || year < 1900) {
+                if (isNaN(month) || isNaN(day) || isNaN(year) || month < 1 || month > 12 || day < 1 || day > 31 || year < 1900) {{
                     return null;
-                }
+                }}
 
                 const birthDate = new Date(year, month - 1, day);
                 const today = new Date();
 
                 let age = today.getFullYear() - birthDate.getFullYear();
                 const m = today.getMonth() - birthDate.getMonth();
-                if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {{
                     age--;
-                }
+                }}
                 return age;
-            }
+            }}
 
-            function validateField(name, value, fieldConfig) {
+            function validateField(name, value, fieldConfig) {{
                 let error = '';
-                switch (fieldConfig.validation) {
+                switch (fieldConfig.validation) {{
                     case 'email':
                         if (!value.trim()) error = fieldConfig.required ? 'Email is required.' : '';
                         else if (!EMAIL_REGEX.test(value)) error = 'Invalid email format.';
@@ -255,20 +255,20 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         break;
                     case 'dob_age':
                         if (!value.trim()) error = fieldConfig.required ? 'Date of birth is required.' : '';
-                        else {
+                        else {{
                             const age = calculateAge(value);
                             if (age === null) error = 'Invalid date format (MM/DD/YYYY).';
                             else if (age < study_config_js.QUALIFICATION_CRITERIA.min_age) error = `You must be ${{study_config_js.QUALIFICATION_CRITERIA.min_age}} or older to participate.`;
-                        }
+                        }}
                         break;
                     default:
-                        if (fieldConfig.required && !value.trim()) error = `${fieldConfig.label} is required.`;
+                        if (fieldConfig.required && !value.trim()) error = `${{fieldConfig.label}} is required.`;
                         break;
-                }
+                }}
                 return error;
-            }
+            }}
 
-            document.addEventListener('DOMContentLoaded', function() {
+            document.addEventListener('DOMContentLoaded', function() {{
                 // FIX 4: Get DOM elements here when the DOM is ready
                 qualificationForm = document.getElementById('qualificationForm');
                 submitButton = document.getElementById('submitButton');
@@ -285,221 +285,221 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
                 const fields = study_config_js.FORM_FIELDS; // Use study_config_js here
 
-                fields.forEach(field => {
+                fields.forEach(field => {{
                     const inputElement = qualificationForm.elements[field.name];
-                    const container = document.getElementById(`field-${field.name}-container`);
+                    const container = document.getElementById(`field-${{field.name}}-container`);
                     
-                    if (inputElement && container) { // Ensure elements exist
+                    if (inputElement && container) {{ // Ensure elements exist
                         // Attach validation listeners
-                        if (field.validation) {
-                            const errorDiv = document.getElementById(`${field.name}Error`);
-                            const validateAndShowError = () => {
+                        if (field.validation) {{
+                            const errorDiv = document.getElementById(`${{field.name}}Error`);
+                            const validateAndShowError = () => {{
                                 const error = validateField(field.name, inputElement.value, field);
                                 if (errorDiv) errorDiv.textContent = error;
-                                if (inputElement.type !== 'radio') { // Only apply border to non-radio inputs
+                                if (inputElement.type !== 'radio') {{ // Only apply border to non-radio inputs
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
-                                } else {
+                                }} else {{
                                     // For radio buttons, apply error class to the container
                                     container.classList.toggle('border-red-500', !!error);
                                     container.classList.toggle('border-gray-300', !error);
-                                }
-                            };
+                                }}
+                            }};
                             inputElement.addEventListener('blur', validateAndShowError);
                             inputElement.addEventListener('input', validateAndShowError);
                             // For radio buttons, attach listener to all in group for immediate validation feedback
-                            if (inputElement.type === 'radio') {
-                                Array.from(qualificationForm.elements[field.name]).forEach(radio => {
+                            if (inputElement.type === 'radio') {{
+                                Array.from(qualificationForm.elements[field.name]).forEach(radio => {{
                                     radio.addEventListener('change', validateAndShowError);
-                                });
-                            }
-                        }
+                                }});
+                            }}
+                        }}
 
                         // FIX 4: Conditional display logic for dynamic fields
-                        if (field.conditional_on) {
+                        if (field.conditional_on) {{
                             const controllingFieldElements = qualificationForm.elements[field.conditional_on.field]; // Get all elements by name
-                            if (controllingFieldElements) {
-                                const updateVisibility = () => {
+                            if (controllingFieldElements) {{
+                                const updateVisibility = () => {{
                                     let controllingValue;
                                     // Check if it's a radio button group
-                                    if (controllingFieldElements.length && controllingFieldElements[0].type === 'radio') {
+                                    if (controllingFieldElements.length && controllingFieldElements[0].type === 'radio') {{
                                         const checkedRadio = Array.from(controllingFieldElements).find(radio => radio.checked);
                                         controllingValue = checkedRadio ? checkedRadio.value : '';
-                                    } else {
+                                    }} else {{
                                         controllingValue = controllingFieldElements.value;
-                                    }
+                                    }}
 
                                     const isVisible = controllingValue === field.conditional_on.value;
                                     container.style.display = isVisible ? 'block' : 'none';
-                                    if (!isVisible) {
+                                    if (!isVisible) {{
                                         // Clear value and errors if hidden
-                                        if (inputElement.type === 'radio') {
+                                        if (inputElement.type === 'radio') {{
                                             Array.from(qualificationForm.elements[field.name]).forEach(radio => radio.checked = false);
-                                        } else {
+                                        }} else {{
                                             inputElement.value = '';
-                                        }
-                                        const errorDiv = document.getElementById(`${field.name}Error`);
+                                        }}
+                                        const errorDiv = document.getElementById(`${{field.name}}Error`);
                                         if (errorDiv) errorDiv.textContent = '';
                                         inputElement.classList.remove('border-red-500');
                                         inputElement.classList.add('border-gray-300');
                                         container.classList.remove('border-red-500'); // Clear container error for radios
                                         container.classList.add('border-gray-300');
-                                    }
-                                };
+                                    }}
+                                }};
                                 // Attach listener to all elements in the controlling group (for radios)
-                                if (controllingFieldElements.length && controllingFieldElements[0].type === 'radio') {
-                                    Array.from(controllingFieldElements).forEach(radio => {
+                                if (controllingFieldElements.length && controllingFieldElements[0].type === 'radio') {{
+                                    Array.from(controllingFieldElements).forEach(radio => {{
                                         radio.addEventListener('change', updateVisibility);
-                                    });
-                                } else {
+                                    }});
+                                }} else {{
                                     controllingFieldElements.addEventListener('change', updateVisibility);
-                                }
+                                }}
                                 updateVisibility(); // Set initial visibility on load
-                            }
-                        }
-                    }
-                });
+                            }}
+                        }}
+                    }}
+                }});
 
                 // FIX 5: Attach form submit listener here
-                qualificationForm.addEventListener('submit', async function(event) {
+                qualificationForm.addEventListener('submit', async function(event) {{
                     event.preventDefault(); // Prevent default form submission (Crucial for POST)
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
 
                     // Correctly collect data from the form, considering only visible fields
-                    const data = {};
+                    const data = {{}};
                     const fieldsInConfig = study_config_js.FORM_FIELDS;
 
                     let allFieldsValid = true; // Initialize validation flag
 
-                    fieldsInConfig.forEach(field => {
-                        const container = document.getElementById(`field-${field.name}-container`);
+                    fieldsInConfig.forEach(field => {{
+                        const container = document.getElementById(`field-${{field.name}}-container`);
                         // Check if the field's container is visible (or if it doesn't have a container/conditional logic)
                         const isVisible = !container || container.style.display !== 'none';
 
-                        if (isVisible) {
+                        if (isVisible) {{
                             let fieldValue;
                             const inputElement = qualificationForm.elements[field.name];
 
                             // Handle radio buttons specifically as formData.get might give the first value, not checked
-                            if (inputElement && inputElement.length && inputElement[0].type === 'radio') {
+                            if (inputElement && inputElement.length && inputElement[0].type === 'radio') {{
                                 const checkedRadio = Array.from(inputElement).find(radio => radio.checked);
                                 fieldValue = checkedRadio ? checkedRadio.value : '';
-                            } else if (inputElement) { // For other input types
+                            }} else if (inputElement) {{ // For other input types
                                 fieldValue = inputElement.value;
-                            } else {
+                            }} else {{
                                 fieldValue = ''; // Fallback if input element not found (shouldn't happen with correct config)
-                            }
+                            }}
                             data[field.name] = fieldValue;
 
                             // Perform validation for visible and required fields
                             const error = validateField(field.name, fieldValue, field);
-                            const errorDiv = document.getElementById(`${field.name}Error`);
+                            const errorDiv = document.getElementById(`${{field.name}}Error`);
 
                             if (errorDiv) errorDiv.textContent = error;
-                            if (inputElement) {
-                                if (inputElement.type !== 'radio') {
+                            if (inputElement) {{
+                                if (inputElement.type !== 'radio') {{
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
-                                } else {
+                                }} else {{
                                     container.classList.toggle('border-red-500', !!error);
                                     container.classList.toggle('border-gray-300', !error);
-                                }
-                            }
-                            if (error) {
+                                }}
+                            }}
+                            if (error) {{
                                 allFieldsValid = false;
-                            }
-                        }
-                    });
+                            }}
+                        }}
+                    }});
 
                     data.study_id = qualificationForm.elements['study_id'].value; // Ensure study_id is always added
 
-                    if (!allFieldsValid) {
+                    if (!allFieldsValid) {{
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'Please correct the errors in the form.';
                         return; // Stop submission if validation fails
-                    }
+                    }}
 
                     submitButton.disabled = true;
                     submitButton.textContent = 'Submitting...';
 
-                    try {
-                        const response = await fetch(`${BASE_URL}/qualify_form`, {
+                    try {{
+                        const response = await fetch(`${{BASE_URL}}/qualify_form`, {{
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {{ 'Content-Type': 'application/json' }},
                             body: JSON.stringify(data), // Send the collected 'data' object
-                        });
+                        }});
                         const result = await response.json(); // AWAIT the JSON parsing
                         console.log('Form submission result:', result);
 
-                        if (result.status === 'sms_required') {
+                        if (result.status === 'sms_required') {{
                             currentSubmissionId = result.submission_id;
                             smsVerifyMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.remove('hidden');
-                        } else if (result.status === 'qualified' || result.status === 'disqualified_no_capture' || result.status === 'duplicate') {
+                        }} else if (result.status === 'qualified' || result.status === 'disqualified_no_capture' || result.status === 'duplicate') {{
                             resultMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.add('hidden'); // Ensure SMS section is hidden
                             resultSection.classList.remove('hidden');
-                        } else if (result.status === 'error') {
+                        }} else if (result.status === 'error') {{
                             generalErrorDiv.classList.remove('hidden');
                             generalErrorMessageSpan.textContent = result.message;
-                        } else {
+                        }} else {{
                             generalErrorDiv.classList.remove('hidden');
                             generalErrorMessageSpan.textContent = 'An unexpected response was received.';
-                        }
-                    } catch (err) {
+                        }}
+                    }} catch (err) {{
                         console.error('Error submitting form:', err);
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
-                    } finally {
+                    }} finally {{
                         submitButton.disabled = false;
                         submitButton.textContent = 'Submit Qualification';
-                    }
-                });
+                    }}
+                }});
 
-                verifyCodeButton.addEventListener('click', async function() {
+                verifyCodeButton.addEventListener('click', async function() {{
                     smsCodeErrorP.textContent = '';
                     const code = smsCodeInput.value.trim();
-                    if (!code || code.length !== 4) {
+                    if (!code || code.length !== 4) {{
                         smsCodeErrorP.textContent = 'Please enter a 4-digit code.';
                         return;
-                    }
+                    }}
 
                     verifyCodeButton.disabled = true;
                     verifyCodeButton.textContent = 'Verifying...';
 
-                    try {
-                        const response = await fetch(`${BASE_URL}/verify_code`, {
+                    try {{
+                        const response = await fetch(`${{BASE_URL}}/verify_code`, {{
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ submission_id: currentSubmissionId, code: code }),
-                        });
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
+                        }});
                         const result = await response.json(); // AWAIT the JSON parsing
                         console.log('SMS verification result:', result);
 
-                        if (result.status === 'success') {
+                        if (result.status === 'success') {{
                             resultMessageP.textContent = result.message;
                             smsVerifySection.classList.add('hidden');
                             resultSection.classList.remove('hidden');
-                        } else if (result.status === 'invalid_code') {
+                        }} else if (result.status === 'invalid_code') {{
                             smsCodeErrorP.textContent = result.message;
-                        } else if (result.status === 'error') {
+                        }} else if (result.status === 'error') {{
                             smsCodeErrorP.textContent = 'A network error occurred during verification. Please try again.';
-                        } else {
+                        }} else {{
                             smsCodeErrorP.textContent = 'An unexpected response was received.';
-                        }
-                    } catch (err) {
+                        }}
+                    }} catch (err) {{
                         console.error('Error verifying SMS:', err);
                         smsCodeErrorP.textContent = 'A network error occurred during verification. Please try again.';
-                    } finally {
+                    }} finally {{
                         verifyCodeButton.disabled = false;
                         verifyCodeButton.textContent = 'Verify Code';
-                    }
-                });
+                    }}
+                }});
 
-                startNewButton.addEventListener('click', function() {
+                startNewButton.addEventListener('click', function() {{
                     qualificationForm.reset();
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
@@ -512,31 +512,31 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     resultSection.classList.add('hidden');
 
                     const fields = study_config_js.FORM_FIELDS; // Use study_config_js here
-                    fields.forEach(field => {
-                        if (field.conditional_on) {
+                    fields.forEach(field => {{
+                        if (field.conditional_on) {{
                             const inputElement = qualificationForm.elements[field.name];
-                            const container = document.getElementById(`field-${field.name}-container`);
-                            if (container) {
+                            const container = document.getElementById(`field-${{field.name}}-container`);
+                            if (container) {{
                                 container.style.display = 'none';
-                                if (inputElement) {
-                                    if (inputElement.type === 'radio') {
+                                if (inputElement) {{
+                                    if (inputElement.type === 'radio') {{
                                         Array.from(qualificationForm.elements[field.name]).forEach(radio => radio.checked = false);
-                                    } else {
+                                    }} else {{
                                         inputElement.value = '';
-                                    }
-                                }
-                            }
-                        }
-                        const errorDiv = document.getElementById(`${field.name}Error`);
+                                    }}
+                                }}
+                            }}
+                        }}
+                        const errorDiv = document.getElementById(`${{field.name}}Error`);
                         if (errorDiv) errorDiv.textContent = '';
                         const inputElement = qualificationForm.elements[field.name];
-                        if (inputElement) {
+                        if (inputElement) {{
                             inputElement.classList.remove('border-red-500');
                             inputElement.classList.add('border-gray-300');
-                        }
-                    });
-                });
-            });
+                        }}
+                    }});
+                }});
+            }});
         </script>
     </body>
     </html>
