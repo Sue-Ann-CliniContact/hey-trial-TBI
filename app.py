@@ -160,7 +160,7 @@ async def verify_code(sms_input: SMSVerificationInput):
                     print(f"❌ Error: Study config not found for study_id {study_id_for_verify} during verification.")
                     return {"status": "error", "message": "Verification failed: Study configuration missing."}
 
-                push_to_monday(data_to_push, group, qualified, tags, ip_info_text, monday_board_id, verify_study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"]) 
+                push_to_monday(data_to_push, group, qualified, tags, ip_info_text, monday_board_id, verify_study_config["MONDAY_COLUMN_MAPPINGS"], verify_study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"])
             else:
                 print(f"DEBUG: Not pushing to Monday.com for submission_id {sms_input.submission_id} as push_to_monday_flag was False.")
             
