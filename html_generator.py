@@ -295,7 +295,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     console.log(`  inputElement:`, inputElement); // Debug
                     console.log(`  container:`, container); // Debug
 
-                    if (inputElement && container) {{ // Ensure elements exist
+                    if (inputElement && container) {{ // Ensure elements exist and are usable
                         // Attach validation listeners
                         if (field.validation) {{
                             const errorDiv = document.getElementById(`${{field.name}}Error`);
@@ -304,19 +304,23 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                 if (errorDiv) errorDiv.textContent = error;
                                 console.log(`Validating field: ${{field.name}}, type: ${{inputElement.type}}, error: ${{!!error}}`); // More specific debug log
                                 
-                                // THIS IS THE BLOCK WHERE THE ERROR IS REPORTED TO OCCUR
-                                if (inputElement.type !== 'radio') {{
+                                // FIX: Ensure inputElement is a single element before accessing classList directly
+                                // For radio groups, inputElement is a RadioNodeList, not a single element
+                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{ // Checks if it's a single DOM element
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
-                                }} else {{
+                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{ // It's a RadioNodeList
                                     container.classList.toggle('border-red-500', !!error);
                                     container.classList.toggle('border-gray-300', !error);
                                 }}
                             }};
-                            inputElement.addEventListener('blur', validateAndShowError);
-                            inputElement.addEventListener('input', validateAndShowError);
-                            // For radio buttons, attach listener to all in group for immediate validation feedback
-                            if (inputElement.type === 'radio') {{
+                            // For individual inputs, attach directly
+                            if (inputElement.nodeType === Node.ELEMENT_NODE) {{
+                                inputElement.addEventListener('blur', validateAndShowError);
+                                inputElement.addEventListener('input', validateAndShowError);
+                            }}
+                            // For radio button groups, attach listener to all in group
+                            if (inputElement.length && inputElement[0].type === 'radio') {{
                                 Array.from(qualificationForm.elements[field.name]).forEach(radio => {{
                                     radio.addEventListener('change', validateAndShowError);
                                 }});
@@ -348,8 +352,11 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                         }}
                                         const errorDiv = document.getElementById(`${{field.name}}Error`);
                                         if (errorDiv) errorDiv.textContent = '';
-                                        inputElement.classList.remove('border-red-500');
-                                        inputElement.classList.add('border-gray-300');
+                                        // Ensure inputElement is a single DOM element before removing classList
+                                        if (inputElement.nodeType === Node.ELEMENT_NODE) {{
+                                            inputElement.classList.remove('border-red-500');
+                                            inputElement.classList.add('border-gray-300');
+                                        }}
                                         container.classList.remove('border-red-500'); // Clear container error for radios
                                         container.classList.add('border-gray-300');
                                     }}
@@ -389,13 +396,13 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
                         if (isVisible) {{
                             let fieldValue;
-                            const inputElement = qualificationForm.elements[field.name];
+                            const inputElement = qualificationForm.elements[field.name]; // <-- This inputElement
 
                             // Handle radio buttons specifically as formData.get might give the first value, not checked
                             if (inputElement && inputElement.length && inputElement[0].type === 'radio') {{
                                 const checkedRadio = Array.from(inputElement).find(radio => radio.checked);
                                 fieldValue = checkedRadio ? checkedRadio.value : '';
-                            }} else if (inputElement) {{ // For other input types
+                            }} else if (inputElement && inputElement.nodeType === Node.ELEMENT_NODE) {{ // Ensure it's a single element
                                 fieldValue = inputElement.value;
                             }} else {{
                                 fieldValue = ''; // Fallback if input element not found (shouldn't happen with correct config)
@@ -408,10 +415,11 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
                             if (errorDiv) errorDiv.textContent = error;
                             if (inputElement) {{
-                                if (inputElement.type !== 'radio') {{
+                                // FIX: Apply class toggling based on element type
+                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{ // Single input element (text, email, tel)
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
-                                }} else {{
+                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{ // RadioNodeList
                                     container.classList.toggle('border-red-500', !!error);
                                     container.classList.toggle('border-gray-300', !error);
                                 }}
@@ -545,7 +553,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                 if (inputElement) {{
                                     if (inputElement.type === 'radio') {{
                                         Array.from(qualificationForm.elements[field.name]).forEach(radio => radio.checked = false);
-                                    }} else {{
+                                    }} else if (inputElement.nodeType === Node.ELEMENT_NODE) {{
                                         inputElement.value = '';
                                     }}
                                 }}
@@ -554,9 +562,14 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         const errorDiv = document.getElementById(`${{field.name}}Error`);
                         if (errorDiv) errorDiv.textContent = '';
                         const inputElement = qualificationForm.elements[field.name];
-                        if (inputElement) {{
+                        if (inputElement && inputElement.nodeType === Node.ELEMENT_NODE) {{
                             inputElement.classList.remove('border-red-500');
                             inputElement.classList.add('border-gray-300');
+                        }}
+                        // For radio button containers, also clear styling on reset
+                        else if (inputElement && inputElement.length && inputElement[0].type === 'radio' && container) {{
+                            container.classList.remove('border-red-500');
+                            container.classList.add('border-gray-300');
                         }}
                     }});
                 }});
