@@ -277,7 +277,7 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
         if check_duplicate_email(data.get("email", ""), study_config["MONDAY_BOARD_ID"]):
             duplicate_info = {"email": data.get("email"), "name": data.get("name", "Duplicate Form"), "source": "Form Submission"}
             # FIX: Pass MONDAY_DROPDOWN_ALLOWED_TAGS for duplicate push
-            push_to_monday(duplicate_info, study_config["DUPLICATE_GROUP_ID"], False, ["Duplicate"], "", study_config["MONDAY_BOARD_ID"], study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"])
+            push_to_monday(duplicate_info, study_config["DUPLICATE_GROUP_ID"], False, ["Duplicate"], "", study_config["MONDAY_BOARD_ID"], study_config["MONDAY_COLUMN_MAPPINGS"], study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"])
             return {"status": "duplicate", "message": "⚠️ It looks like you’ve already submitted an application for this platform. We’ll be in touch if you qualify!"}
 
         # 4. Perform qualification logic (uses study_config criteria)
