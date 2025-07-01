@@ -39,6 +39,34 @@ FORM_FIELDS = [
     {"name": "study_interest_keywords", "label": "What types of studies would you be interested in?", "type": "text", "placeholder": "e.g., Kidney disease, Depression, Diabetes", "description": "List comma separated keywords", "conditional_on": {"field": "future_study_consent", "value": "Yes"}}
 ]
 
+# --- QUALIFICATION RULES ---
+QUALIFICATION_RULES = [
+    {"field": "age", "operator": "greater_than_or_equal", "value": 18, "type": "age", "disqual_message": "you are under 18 years old"},
+    {"field": "distance", "operator": "less_than_or_equal", "value": "threshold", "type": "distance", "disqual_message": "you are located outside the eligible distance from our research site"},
+
+    # Exclusionary criteria (simple checks)
+    {"field": "previous_bupropion", "operator": "equals", "value": "No", "disqual_message": "you have previously been treated with bupropion"},
+    {"field": "current_depression_medication", "operator": "equals", "value": "No", "disqual_message": "you are currently taking antidepressant medication"},
+    {"field": "untreatable_cancer", "operator": "equals", "value": "No", "disqual_message": "you have untreatable cancer"},
+    {"field": "liver_disease", "operator": "equals", "value": "No", "disqual_message": "you suffer from liver disease"},
+    {"field": "seizure_disorder", "operator": "equals", "value": "No", "disqual_message": "you have a seizure disorder"},
+    {"field": "dialysis", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving hemodialysis or peritoneal dialysis"},
+    {"field": "current_depression_therapy", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving therapy for depression"},
+
+    # CKD/GFR Complex Logic - Represented as a sequence of dependent rules
+    # Rule 1: Must have CKD stage 3b, 4, or 5 OR kidney transplant with GFR < 45
+    {"field": "ckd_gfr", "operator": "equals", "value": "Yes", "disqual_message": "you do not have chronic kidney disease (CKD) at the required stage or a kidney transplant with the specified GFR", "rule_id": "ckd_main_check"},
+
+    # Rule 2: If ckd_gfr is Yes, and kidney_transplant_6months is NOT "Not Applicable", then it must be "Yes"
+    # This rule is conditional on 'ckd_main_check' being true.
+    # And its application depends on the 'kidney_transplant_6months' answer
+    {"field": "kidney_transplant_6months", "operator": "equals", "value": "Yes", "disqual_message": "your kidney transplant has not been at least 6 months ago", "depends_on": {"rule_id": "ckd_main_check", "value_of": "ckd_gfr", "is": "Yes", "skip_if_field": "kidney_transplant_6months", "skip_value": "Not Applicable"}},
+
+    # Rule 3: If ckd_gfr is Yes, then gfr_less_45 must be Yes
+    # This rule is conditional on 'ckd_main_check' being true.
+    {"field": "gfr_less_45", "operator": "equals", "value": "Yes", "disqual_message": "your most recent kidney filtration rate (GFR) is not less than 45", "depends_on": {"rule_id": "ckd_main_check", "value_of": "ckd_gfr", "is": "Yes"}}
+]
+
 # --- Monday.com Column Mappings ---
 MONDAY_COLUMN_MAPPINGS = {
     "email": "email",
@@ -72,32 +100,9 @@ This study focuses on individuals with chronic kidney disease (CKD) at specific 
 
 FORM_TITLE = "Concord Study Qualification - Stony Brook"
 
-# configs/study_concord_stonybrook.py (Add these sections or modify existing ones)
-
-# ... (existing imports and constants) ...
-
-# --- QUALIFICATION RULES ---
-QUALIFICATION_RULES = [
-    {"field": "age", "operator": "greater_than_or_equal", "value": 18, "type": "age", "disqual_message": "you are under 18 years old"},
-    {"field": "distance", "operator": "less_than_or_equal", "value": "threshold", "type": "distance", "disqual_message": "you are located outside the eligible distance from our research site"},
-    {"field": "previous_bupropion", "operator": "equals", "value": "No", "disqual_message": "you have previously been treated with bupropion"},
-    {"field": "current_depression_medication", "operator": "equals", "value": "No", "disqual_message": "you are currently taking antidepressant medication"},
-    {"field": "untreatable_cancer", "operator": "equals", "value": "No", "disqual_message": "you have untreatable cancer"},
-    {"field": "liver_disease", "operator": "equals", "value": "No", "disqual_message": "you suffer from liver disease"},
-    {"field": "seizure_disorder", "operator": "equals", "value": "No", "disqual_message": "you have a seizure disorder"}, # Assuming 'No' is required
-    {"field": "dialysis", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving hemodialysis or peritoneal dialysis"}, # Assuming 'No' is required
-    {"field": "current_depression_therapy", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving therapy for depression"}, # Assuming 'No' is required
-    # Complex CKD/GFR logic will still need special handling in main.py, but we can make it more generic
-    # For instance, a 'complex' type rule that main.py knows to handle with specific logic
-    {"field": "ckd_gfr_complex", "operator": "complex_check", "value": "None", "type": "complex", "disqual_message": "you do not meet the kidney disease or GFR criteria"}
-]
-
 # --- Study-Specific SMS Messages ---
 SMS_MESSAGES = {
     "qualified": "✅ Congratulations! Based on your answers, you may qualify for the Concord study.",
     "future_consent": "Thank you for your interest. Based on your answers, you do not meet the current Concord study criteria, but since you opted for future studies, we will verify your contact information.",
     "sms_prompt": "Please check your phone for a 4-digit verification code for the Concord Study."
 }
-
-# IMPORTANT: Remove QUALIFICATION_CRITERIA dictionary if you fully transition to QUALIFICATION_RULES
-# Also, remove KESSLER_COORDS and DISTANCE_THRESHOLD_MILES from here and get them from the new config's constants.

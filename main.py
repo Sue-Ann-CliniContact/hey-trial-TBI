@@ -56,7 +56,9 @@ def load_study_config(study_id: str) -> Optional[Dict[str, Any]]:
             "MONDAY_DROPDOWN_ALLOWED_TAGS": getattr(module, "MONDAY_DROPDOWN_ALLOWED_TAGS", []),
             "STUDY_SUMMARY": getattr(module, "STUDY_SUMMARY", "No study summary provided."),
             "FORM_TITLE": getattr(module, "FORM_TITLE", "Qualification Form"),
-            "SMS_MESSAGES": getattr(module, "SMS_MESSAGES", {}) # NEW: Load SMS messages
+            "SMS_MESSAGES": getattr(module, "SMS_MESSAGES", {}), # NEW: Load SMS messages
+            "TARGET_COORDS": getattr(module, "KESSLER_COORDS", None) if study_id == "tbi_kessler" else getattr(module, "CONCORD_COORDS", None), # NEW: Load specific coords
+            "DISTANCE_THRESHOLD_MILES": getattr(module, "DISTANCE_THRESHOLD_MILES", None) # NEW: Load specific distance threshold
         }
         
         # Store for future use
@@ -230,6 +232,8 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
         if not is_us_number(data.get("phone", "")):
             return {"status": "error", "message": "⚠️ Invalid US phone number format. Please enter a 10-digit US number (e.g. 5551234567)."}
 
+        # Age check
+        age = None
         try:
             age = calculate_age(data.get("dob", ""))
         except ValueError as e:
@@ -249,55 +253,14 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
         qualified = True
         disqualification_reasons = []
         tags = []
+        
+        # Track rules that have been explicitly processed (e.g., complex rules)
+        processed_rule_ids = set()
 
-        # Process age rule first (assumed always present)
-        age_rule = next((rule for rule in study_config["QUALIFICATION_RULES"] if rule.get("type") == "age"), None)
-        if age_rule:
-            if not (age >= age_rule["value"]):
-                qualified = False
-                disqualification_reasons.append(age_rule["disqual_message"])
-
-        # Process distance rule (if present)
-        distance_rule = next((rule for rule in study_config["QUALIFICATION_RULES"] if rule.get("type") == "distance"), None)
-        distance_ok = True # Default to True if no distance rule or if coords invalid
-        ip_info_text = ""
-
-        if distance_rule:
-            coords = get_coords_from_city_state(city_state_value)
-            if not coords or not coords.get("latitude") or not coords.get("longitude"):
-                return {"status": "error", "message": "⚠️ Sorry, we couldn't determine your location from the provided City/State. Please ensure it's correct (e.g., 'Newark, NJ')."}
-            
-            # Target coords are directly in study config (e.g., KESSLER_COORDS or CONCORD_COORDS)
-            # Need to get target_coords and distance_threshold_miles from the config, which are at the module level.
-            # Currently, they are not loaded into 'study_config' in load_study_config
-            # This needs to be fixed in load_study_config and in the individual study configs.
-            # For now, let's assume they are directly available from the config:
-            target_coords = getattr(importlib.import_module(f"configs.study_{study_id}"), "KESSLER_COORDS", None) # Default to Kessler's if not found
-            distance_threshold_miles = getattr(importlib.import_module(f"configs.study_{study_id}"), "DISTANCE_THRESHOLD_MILES", None) # Default
-
-            if study_id == "concord_stonybrook": # Overriding for concord to use its specific coords
-                target_coords = getattr(importlib.import_module(f"configs.study_{study_id}"), "CONCORD_COORDS", None)
-            
-            if target_coords and distance_threshold_miles is not None:
-                distance_ok = is_within_distance(coords.get("latitude"), coords.get("longitude"), 
-                                                 target_coords, 
-                                                 distance_threshold_miles)
-            else:
-                print(f"WARNING: Distance check rule present but target_coords or distance_threshold_miles not found in config for {study_id}.")
-                distance_ok = True # Proceed as if distance is okay if config is incomplete
-
-            if not distance_ok:
-                qualified = False
-                disqualification_reasons.append(distance_rule["disqual_message"])
-                tags.append("Too far")
-
-        # Handle handedness tag (general, not a disqualifier)
-        if data.get("handedness") == "Left-handed":
-            tags.append("Left-handed")
-
-        # Process general qualification rules
+        # Phase 1: Process simple qualification rules
         for rule in study_config["QUALIFICATION_RULES"]:
-            if rule.get("type") in ["age", "distance", "complex"]: # Already handled or will be handled
+            if rule.get("type") in ["age", "distance", "complex"]:
+                # These will be handled separately or have their own complex logic
                 continue
 
             field_value = data.get(rule["field"])
@@ -309,38 +272,85 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
             elif rule["operator"] == "not_equals":
                 if field_value != rule["value"]:
                     rule_met = True
-            # Add other operators as needed (e.g., greater_than, less_than)
+            # Add other operators as needed
 
             if not rule_met:
                 qualified = False
                 disqualification_reasons.append(rule["disqual_message"])
             
-        # Handle complex qualification logic (e.g., for Concord's CKD/GFR)
-        if study_id == "concord_stonybrook" and qualified: # Only if previous checks passed
-            # Specific logic for CKD/GFR based on your description
-            is_ckd_gfr_yes = (data.get("ckd_gfr") == "Yes")
-            is_kidney_transplant_6months_yes = (data.get("kidney_transplant_6months") == "Yes")
-            is_kidney_transplant_not_applicable = (data.get("kidney_transplant_6months") == "Not Applicable")
-            is_gfr_less_45_yes = (data.get("gfr_less_45") == "Yes")
+        # Phase 2: Process age rule (special handling as it's not a direct form field value check)
+        age_rule = next((rule for rule in study_config["QUALIFICATION_RULES"] if rule.get("type") == "age"), None)
+        if age_rule:
+            if age is None or not (age >= age_rule["value"]):
+                qualified = False
+                disqualification_reasons.append(age_rule["disqual_message"])
+            processed_rule_ids.add(age_rule.get("rule_id")) # Track if rule_id is present
 
-            ckd_gfr_qualified_concord = True
+        # Phase 3: Process distance rule (special handling)
+        distance_rule = next((rule for rule in study_config["QUALIFICATION_RULES"] if rule.get("type") == "distance"), None)
+        if distance_rule:
+            user_coords = get_coords_from_city_state(city_state_value)
+            if not user_coords or not user_coords.get("latitude") or not user_coords.get("longitude"):
+                # If we can't get coords, and distance is required, then disqualify
+                qualified = False
+                disqualification_reasons.append(distance_rule["disqual_message"])
+                tags.append("Location unknown") # New tag for this specific disqualification reason
+            else:
+                distance_threshold_miles = study_config["DISTANCE_THRESHOLD_MILES"]
+                target_coords = study_config["TARGET_COORDS"] # Loaded from config now
 
-            if not is_ckd_gfr_yes: # If main CKD question is No, disqualify
-                ckd_gfr_qualified_concord = False
-                disqualification_reasons.append("you do not have chronic kidney disease (CKD) at the required stage or a kidney transplant with the specified GFR")
-            else: # ckd_gfr is "Yes"
-                # If they have a kidney transplant, it must be >= 6 months, OR it's "Not Applicable" (no transplant)
-                if not (is_kidney_transplant_yes or is_kidney_transplant_not_applicable):
-                    ckd_gfr_qualified_concord = False
-                    disqualification_reasons.append("your kidney transplant has not been at least 6 months ago, or you did not provide applicable information")
+                distance_ok = is_within_distance(user_coords.get("latitude"), user_coords.get("longitude"), 
+                                                 target_coords, 
+                                                 distance_threshold_miles)
+                if not distance_ok:
+                    qualified = False
+                    disqualification_reasons.append(distance_rule["disqual_message"])
+                    tags.append("Too far")
+            processed_rule_ids.add(distance_rule.get("rule_id")) # Track
+
+        # Handle handedness tag (general, not a disqualifier)
+        if data.get("handedness") == "Left-handed":
+            tags.append("Left-handed")
+
+        # Phase 4: Process complex rules that might depend on other rules
+        for rule in study_config["QUALIFICATION_RULES"]:
+            if rule.get("type") != "complex":
+                continue # Only process complex rules in this phase
+
+            # Example of how complex rules can be defined and processed
+            if rule["field"] == "ckd_gfr_complex":
+                # Check prerequisites for this complex rule if they exist
+                # This specific complex rule implicitly depends on 'ckd_gfr' answer
                 
-                # GFR must be < 45 if CKD/GFR is "Yes"
-                if not is_gfr_less_45_yes:
-                    ckd_gfr_qualified_concord = False
-                    disqualification_reasons.append("your most recent kidney filtration rate (GFR) is not less than 45")
-            
-            qualified = qualified and ckd_gfr_qualified_concord # Combine with previous checks
+                ckd_gfr_response = data.get("ckd_gfr")
+                kidney_transplant_6months_response = data.get("kidney_transplant_6months")
+                gfr_less_45_response = data.get("gfr_less_45")
 
+                ckd_gfr_complex_qualified = True
+                
+                # Rule 1: Must have CKD stage 3b, 4, or 5 OR Kidney Transplant with GFR < 45
+                if ckd_gfr_response != "Yes":
+                    ckd_gfr_complex_qualified = False
+                    disqualification_reasons.append(rule["disqual_message"]) # Use the general complex disqual message
+
+                else: # ckd_gfr_response is "Yes"
+                    # Rule 2: If kidney transplant, must be >= 6 months OR "Not Applicable"
+                    if kidney_transplant_6months_response == "No":
+                        ckd_gfr_complex_qualified = False
+                        disqualification_reasons.append("your kidney transplant has not been at least 6 months ago")
+                    
+                    # Rule 3: GFR must be < 45
+                    if gfr_less_45_response != "Yes":
+                        ckd_gfr_complex_qualified = False
+                        disqualification_reasons.append("your most recent kidney filtration rate (GFR) is not less than 45")
+                
+                if not ckd_gfr_complex_qualified:
+                    qualified = False
+                processed_rule_ids.add(rule.get("rule_id")) # Track
+            # Add more complex rule types here with their specific logic if needed for other studies
+
+        # Final qualification status derived from all rules
+        # 'qualified' will be False if any disqualifying rule was hit
 
         # 5. Determine final group, tags, and SMS/Monday.com push logic
         final_message_for_sms = ""
