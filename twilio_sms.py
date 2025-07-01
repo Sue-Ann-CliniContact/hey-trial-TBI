@@ -31,22 +31,18 @@ def format_us_number(phone: str) -> str:
     # return as is, but this should be caught by is_us_number
     return phone
 
-def send_verification_sms(to_number: str, code: str) -> tuple[bool, str]:
+def send_verification_sms(to_number: str, message_body: str) -> tuple[bool, str]: # Changed from 'code' to 'message_body'
     """
-    Sends a verification code if the number is a valid U.S. number.
+    Sends an SMS with the provided message body.
     Returns (True, "") if successful or (False, "error message") otherwise.
     """
-    # Validation moved to main.py before calling this function,
-    # but we can keep a check here as a safeguard if desired, or remove.
-    # For now, keeping as a double-check since Twilio will reject invalid formats anyway.
     if not is_us_number(to_number):
         return False, "⚠️ Internal error: Phone number not a valid U.S. number format for SMS."
 
     try:
-        # format_us_number is called here to ensure Twilio receives E.164 format
         formatted_number = format_us_number(to_number)
         message = client.messages.create(
-            body=f"Hi! Your confirmation code for the Kessler Study is {code}. Please enter this code in the chat to confirm your submission.",
+            body=message_body, # Use the dynamic message_body here
             from_=TWILIO_NUMBER,
             to=formatted_number
         )
