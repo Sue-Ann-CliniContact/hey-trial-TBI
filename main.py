@@ -398,9 +398,14 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
                 ip_info_text_parts.append(f"Org: {ip_info_data['org']}")
         ip_info_text = "\n".join(ip_info_text_parts)
 
+        # Store session data if SMS required
         if sms_required_flag:
-            verification_code = generate_verification_code()
+            verification_code = generate_verification_code() # Generate code first
             submission_id = str(uuid.uuid4())
+
+            # Construct the FULL SMS message body AFTER verification_code is generated
+            full_sms_message_body = final_message_for_sms + " " + sms_prompt_msg + f" Your code is {verification_code}."
+
             sessions[submission_id] = {
                 "data": data,
                 "code": verification_code, # Code is still stored separately for verification
@@ -417,8 +422,8 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
             phone_number = data.get("phone", "")
             formatted_phone_number = format_us_number(phone_number)
             
-            # FIX: Pass the full constructed message_body to send_verification_sms
-            sms_success, sms_error_msg = send_verification_sms(formatted_phone_number, full_sms_message_body) # Pass the full message
+            # Pass the full constructed message_body to send_verification_sms
+            sms_success, sms_error_msg = send_verification_sms(formatted_phone_number, full_sms_message_body)
             
             if sms_success:
                 # The message returned to frontend is just the initial part for display
