@@ -256,9 +256,15 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         else {{
                             const age = calculateAge(value);
                             if (age === null) error = 'Invalid date format (MM/DD/YYYY).';
-                            else if (age < study_config_js.QUALIFICATION_CRITERIA.min_age) error = `You must be ${{study_config_js.QUALIFICATION_CRITERIA.min_age}} or older to participate.`;
+                            else {{
+                                // FIX: Get min_age dynamically from QUALIFICATION_RULES
+                                const ageRule = study_config_js.QUALIFICATION_RULES.find(rule => rule.type === 'age' && rule.operator === 'greater_than_or_equal');
+                                if (ageRule && age < ageRule.value) {{
+                                    error = `You must be ${{ageRule.value}} or older to participate.`;
+                                }}
+                            }}
                         }}
-                        break;
+                        break;                        
                     default:
                         if (fieldConfig.required && !value.trim()) error = `${{fieldConfig.label}} is required.`;
                         break;
