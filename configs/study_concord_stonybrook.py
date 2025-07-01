@@ -13,9 +13,9 @@ MONDAY_BOARD_ID = 2030248088 # Provided in your query
 # Group IDs from the Monday.com query response are for STATUS column labels, not actual groups.
 # You need to get the actual GROUP IDs from your Monday.com board (e.g., "Qualified Leads", "Disqualified Leads")
 # For now, using placeholders. Please REPLACE these with actual group IDs from your Monday.com board.
-QUALIFIED_GROUP_ID = "topics" # Common default group for new items, or get actual 'Qualified' group ID
-DISQUALIFIED_GROUP_ID = "new_group123" # Example: an actual group ID for disqualified leads on your board
-DUPLICATE_GROUP_ID = "new_group456" # Example: an actual group ID for duplicate leads on your board
+QUALIFIED_GROUP_ID = "new_group58505__1" # Common default group for new items, or get actual 'Qualified' group ID
+DISQUALIFIED_GROUP_ID = "new_group__1" # Example: an actual group ID for disqualified leads on your board
+DUPLICATE_GROUP_ID = "group_mkqb9ps4" # Example: an actual group ID for duplicate leads on your board
 
 # --- Form Field Definitions ---
 FORM_FIELDS = [

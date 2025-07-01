@@ -398,28 +398,30 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
                 ip_info_text_parts.append(f"Org: {ip_info_data['org']}")
         ip_info_text = "\n".join(ip_info_text_parts)
 
-        # Store session data if SMS required
         if sms_required_flag:
             verification_code = generate_verification_code()
             submission_id = str(uuid.uuid4())
             sessions[submission_id] = {
                 "data": data,
-                "code": verification_code,
+                "code": verification_code, # Code is still stored separately for verification
                 "push_to_monday_flag": push_to_monday_flag,
                 "group": group,
                 "qualified": qualified,
                 "tags": tags,
                 "ip_info_text": ip_info_text,
                 "monday_board_id": study_config["MONDAY_BOARD_ID"],
-                "monday_column_mappings": study_config["MONDAY_COLUMN_MAPPINGS"], # Pass mappings
-                "monday_dropdown_allowed_tags": study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"] # Pass allowed tags
+                "monday_column_mappings": study_config["MONDAY_COLUMN_MAPPINGS"],
+                "monday_dropdown_allowed_tags": study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"]
             }
             
             phone_number = data.get("phone", "")
             formatted_phone_number = format_us_number(phone_number)
-            sms_success, sms_error_msg = send_verification_sms(formatted_phone_number, verification_code)
+            
+            # FIX: Pass the full constructed message_body to send_verification_sms
+            sms_success, sms_error_msg = send_verification_sms(formatted_phone_number, full_sms_message_body) # Pass the full message
             
             if sms_success:
+                # The message returned to frontend is just the initial part for display
                 return {"status": "sms_required", "submission_id": submission_id, "message": final_message_for_sms + " " + sms_prompt_msg}
             else:
                 del sessions[submission_id]
