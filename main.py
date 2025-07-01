@@ -1,3 +1,4 @@
+# main.py
 import uuid
 import random
 import math
@@ -7,31 +8,16 @@ import os
 import re
 import traceback
 from typing import Dict, Any, Optional
-import importlib.util # For dynamic module loading
-
-# --- CHANGE START: Removed OpenAI import as chatbot/AI code is removed ---
-# from openai import OpenAI
-# --- CHANGE END ---
+import importlib.util
 
 from twilio_sms import send_verification_sms, is_us_number, format_us_number
 from push_to_monday import push_to_monday
 from check_duplicate import check_duplicate_email
 
-# --- GLOBAL CONSTANTS (API Keys, not study-specific) ---
 IPINFO_TOKEN = os.getenv("IPINFO_TOKEN")
-# User confirmed Maps_API_KEY is the env var name, so use it consistently
 Maps_API_KEY = os.getenv("Maps_API_KEY") 
 
-# --- CHANGE START: Removed OpenAI client initialization as chatbot/AI code is removed ---
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# client = OpenAI(api_key=OPENAI_API_KEY)
-# --- CHANGE END ---
-
-# Session storage (for SMS verification temporary data)
 sessions: Dict[str, Dict[str, Any]] = {}
-
-# --- DYNAMIC CONFIGURATION LOADING ---
-# This dictionary will store loaded study configurations
 STUDY_CONFIGS: Dict[str, Dict[str, Any]] = {}
 
 def load_study_config(study_id: str) -> Optional[Dict[str, Any]]:
@@ -43,8 +29,6 @@ def load_study_config(study_id: str) -> Optional[Dict[str, Any]]:
         return STUDY_CONFIGS[study_id]
 
     try:
-        # Construct the path to the config file
-        # Assumes config files are named like study_<study_id>.py
         config_file_name = f"study_{study_id}.py"
         config_file_path = os.path.join(os.path.dirname(__file__), "configs", config_file_name)
         
@@ -52,7 +36,6 @@ def load_study_config(study_id: str) -> Optional[Dict[str, Any]]:
             print(f"❌ Config file not found for study_id: {study_id} at {config_file_path}")
             return None
 
-        # Dynamically import the module
         spec = importlib.util.spec_from_file_location(f"configs.{study_id}", config_file_path)
         if spec is None:
             print(f"❌ Could not load module spec for study_id: {study_id}")
@@ -61,20 +44,19 @@ def load_study_config(study_id: str) -> Optional[Dict[str, Any]]:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        # Extract relevant constants from the loaded module
+        # Updated to fetch new dynamic fields
         config = {
-            "KESSLER_COORDS": getattr(module, "KESSLER_COORDS", None),
-            "DISTANCE_THRESHOLD_MILES": getattr(module, "DISTANCE_THRESHOLD_MILES", None),
             "MONDAY_BOARD_ID": getattr(module, "MONDAY_BOARD_ID", None),
             "QUALIFIED_GROUP_ID": getattr(module, "QUALIFIED_GROUP_ID", None),
             "DISQUALIFIED_GROUP_ID": getattr(module, "DISQUALIFIED_GROUP_ID", None),
             "DUPLICATE_GROUP_ID": getattr(module, "DUPLICATE_GROUP_ID", None),
             "FORM_FIELDS": getattr(module, "FORM_FIELDS", []),
             "MONDAY_COLUMN_MAPPINGS": getattr(module, "MONDAY_COLUMN_MAPPINGS", {}),
-            "QUALIFICATION_CRITERIA": getattr(module, "QUALIFICATION_CRITERIA", {}),
+            "QUALIFICATION_RULES": getattr(module, "QUALIFICATION_RULES", []), # NEW: Load rules
             "MONDAY_DROPDOWN_ALLOWED_TAGS": getattr(module, "MONDAY_DROPDOWN_ALLOWED_TAGS", []),
             "STUDY_SUMMARY": getattr(module, "STUDY_SUMMARY", "No study summary provided."),
-            "FORM_TITLE": getattr(module, "FORM_TITLE", "Qualification Form") # New: Form title from config
+            "FORM_TITLE": getattr(module, "FORM_TITLE", "Qualification Form"),
+            "SMS_MESSAGES": getattr(module, "SMS_MESSAGES", {}) # NEW: Load SMS messages
         }
         
         # Store for future use
@@ -86,7 +68,6 @@ def load_study_config(study_id: str) -> Optional[Dict[str, Any]]:
         traceback.print_exc()
         return None
 
-# --- Re-used Helper Functions (no change needed here) ---
 def generate_session_id() -> str:
     return str(uuid.uuid4())
 
@@ -105,20 +86,14 @@ def generate_verification_code() -> str:
     return str(random.randint(1000, 9999))
 
 def calculate_age(dob: str) -> int:
-    """Calculates age from a `MM/DD/YYYY` date string. Raises ValueError if format is incorrect or under 18."""
+    """Calculates age from a `MM/DD/YYYY` date string."""
     try:
         birth_date = datetime.datetime.strptime(dob, "%m/%d/%Y").date()
         today = datetime.date.today()
         age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
-        
-        if age < 18:
-            raise ValueError("Age must be 18 years or older for these studies.")
-            
         return age
-    except ValueError as e:
-        print(f"Error calculating age for DOB '{dob}': {e}")
-        raise ValueError(f"Invalid date of birth or age: {e}. Please use `MM/DD/YYYY` and ensure you are 18 or older.")
-
+    except ValueError:
+        raise ValueError("Invalid date of birth format. Please use MM/DD/YYYY.")
 
 def haversine_distance(lat1, lon1, lat2, lon2) -> float:
     """Calculates Haversine distance between two sets of coordinates in miles."""
@@ -150,7 +125,6 @@ def get_location_from_ip(ip_address: str) -> Dict[str, Any]:
 
 def get_coords_from_city_state(city_state: str) -> Dict[str, float]:
     """Gets geographical coordinates for a given city and state using Google Maps Geocoding API."""
-    # FIX: Use Maps_API_KEY as per user's environment variable name
     url = f"https://maps.googleapis.com/maps/api/geocode/json?address={city_state}&key={Maps_API_KEY}"
     try:
         response = requests.get(url)
@@ -172,7 +146,10 @@ def is_within_distance(user_lat: float, user_lon: float, target_coords: tuple, d
     return distance <= distance_threshold_miles
 
 def normalize_fields(data: dict) -> dict:
-    """Normalizes specific fields in the data dictionary (Yes/No, handedness, consent)."""
+    """Normalizes specific fields in the data dictionary (Yes/No, handedness, consent, Not Applicable)."""
+    normalized_data = data.copy()
+
+    # Define common normalization rules
     def normalize_yes_no(value):
         val = str(value).strip().lower()
         if val in ["yes", "y"]:
@@ -180,7 +157,7 @@ def normalize_fields(data: dict) -> dict:
         elif val in ["no", "n"]:
             return "No"
         return value
-
+    
     def normalize_handedness(value):
         val = str(value).strip().lower()
         if "left" in val:
@@ -197,27 +174,30 @@ def normalize_fields(data: dict) -> dict:
             return "I, do not confirm"
         return value
 
-    normalized_data = data.copy()
+    def normalize_not_applicable(value):
+        val = str(value).strip().lower()
+        if val in ["not applicable", "n/a"]:
+            return "Not Applicable"
+        return value # Use other normalizers first for Yes/No, then apply this if needed.
 
+    # Apply normalization based on field names (can be expanded based on config)
     for key, val in normalized_data.items():
-        if key in ["tbi_year", "memory_issues", "english_fluent", "can_exercise", "can_mri"]:
+        # Generic Yes/No fields
+        if key in ["tbi_year", "memory_issues", "english_fluent", "can_exercise", "can_mri",
+                   "ckd_gfr", "previous_bupropion", "current_depression_medication",
+                   "untreatable_cancer", "liver_disease", "seizure_disorder", "dialysis",
+                   "current_depression_therapy", "gfr_less_45"]:
             normalized_data[key] = normalize_yes_no(val)
+        # Specific fields
         elif key == "handedness":
             normalized_data[key] = normalize_handedness(val)
         elif key == "future_study_consent":
             normalized_data[key] = normalize_consent(val)
-        # 'study_interest_keywords' is a new field and typically just stored as text, no normalization needed
-
+        elif key == "kidney_transplant_6months": # Needs Yes/No and Not Applicable
+            normalized_data[key] = normalize_not_applicable(normalize_yes_no(val)) # Apply Yes/No first then N/A
+    
     return normalized_data
 
-# --- CHANGE START: Removed ask_gpt and chatbot specific questions/prompts ---
-# Removed ask_gpt function
-# Removed questions list
-# Removed question_prompts dictionary
-# Removed handle_input function
-# --- CHANGE END ---
-
-# --- NEW FUNCTION START: For Smart Form Submission ---
 def process_qualification_submission_from_form(form_data: Dict[str, Any], study_id: str, ip_address: Optional[str] = None) -> Dict[str, Any]:
     """
     Processes all qualification data from a single form submission for a specific study.
@@ -233,130 +213,196 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
         Dict[str, Any]: A dictionary with result status (e.g., 'sms_required', 'qualified', 'disqualified'),
                         and a message for the user.
     """
-    # Load the specific study configuration
     study_config = load_study_config(study_id)
     if not study_config:
         return {"status": "error", "message": f"⚠️ Study configuration for '{study_id}' not found."}
 
     try:
-        # 1. Normalize fields (uses existing normalize_fields function)
         data = normalize_fields(form_data)
-        
-        # Add IP to data if available (for Monday.com push)
         if ip_address:
             data['ip'] = ip_address
 
-        # 2. Perform comprehensive validation on all fields received from the form
-        
-        # Email validation
+        # --- Basic Validations (common for all studies) ---
         email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(email_regex, data.get("email", "")):
             return {"status": "error", "message": "⚠️ Invalid email address format. Please provide a valid email (e.g., example@domain.com)."}
         
-        # Phone validation
         if not is_us_number(data.get("phone", "")):
             return {"status": "error", "message": "⚠️ Invalid US phone number format. Please enter a 10-digit US number (e.g. 5551234567)."}
 
-        # DOB validation and age calculation (now handles MM/DD/YYYY and age >= 18)
-        dob_value = data.get("dob", "")
-        if not dob_value:
-            return {"status": "error", "message": "⚠️ Date of birth is missing."}
         try:
-            age = calculate_age(dob_value) 
-            if age < study_config["QUALIFICATION_CRITERIA"]["min_age"]:
-                raise ValueError(f"Age must be {study_config['QUALIFICATION_CRITERIA']['min_age']} years or older for these studies.")
+            age = calculate_age(data.get("dob", ""))
         except ValueError as e:
             return {"status": "error", "message": f"⚠️ {e}"}
 
-        # City/State validation
         city_state_value = data.get("city_state", "")
         if not city_state_value:
             return {"status": "error", "message": "⚠️ City and State information is missing."}
 
-        # 3. Check for duplicate email (uses study_config's board ID)
+        # --- Duplicate Check ---
         if check_duplicate_email(data.get("email", ""), study_config["MONDAY_BOARD_ID"]):
             duplicate_info = {"email": data.get("email"), "name": data.get("name", "Duplicate Form"), "source": "Form Submission"}
-            # FIX: Pass MONDAY_DROPDOWN_ALLOWED_TAGS for duplicate push
             push_to_monday(duplicate_info, study_config["DUPLICATE_GROUP_ID"], False, ["Duplicate"], "", study_config["MONDAY_BOARD_ID"], study_config["MONDAY_COLUMN_MAPPINGS"], study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"])
             return {"status": "duplicate", "message": "⚠️ It looks like you’ve already submitted an application for this platform. We’ll be in touch if you qualify!"}
 
-        # 4. Perform qualification logic (uses study_config criteria)
-        coords = get_coords_from_city_state(city_state_value)
-        if not coords or not coords.get("latitude") or not coords.get("longitude"):
-            return {"status": "error", "message": "⚠️ Sorry, we couldn't determine your location from the provided City/State. Please ensure it's correct (e.g., 'Newark, NJ')."}
-
-        distance_ok = True
-        if study_config["QUALIFICATION_CRITERIA"].get("distance_check_required", False):
-            distance_ok = is_within_distance(coords.get("latitude", 0.0), coords.get("longitude", 0.0), 
-                                             study_config["QUALIFICATION_CRITERIA"]["target_coords"], 
-                                             study_config["QUALIFICATION_CRITERIA"]["distance_threshold_miles"])
-        
-        qualified = (
-            data.get("tbi_year") == study_config["QUALIFICATION_CRITERIA"].get("tbi_year", "Yes") and
-            data.get("memory_issues") == study_config["QUALIFICATION_CRITERIA"].get("memory_issues", "Yes") and
-            data.get("english_fluent") == study_config["QUALIFICATION_CRITERIA"].get("english_fluent", "Yes") and
-            data.get("can_exercise") == study_config["QUALIFICATION_CRITERIA"].get("can_exercise", "Yes") and
-            data.get("can_mri") == study_config["QUALIFICATION_CRITERIA"].get("can_mri", "Yes") and
-            (distance_ok if study_config["QUALIFICATION_CRITERIA"].get("distance_check_required", False) else True) # Only check if required
-        )
-
-        group = study_config["QUALIFIED_GROUP_ID"] if qualified else study_config["DISQUALIFIED_GROUP_ID"]
-        tags = []
-        if not distance_ok: tags.append("Too far")
-        if data.get("handedness") == "Left-handed": tags.append("Left-handed")
-        
+        # --- Dynamic Qualification Logic ---
+        qualified = True
         disqualification_reasons = []
-        if not distance_ok: disqualification_reasons.append("you are located outside the eligible distance from our research site")
-        if age < study_config["QUALIFICATION_CRITERIA"]["min_age"]: disqualification_reasons.append(f"you are under {study_config['QUALIFICATION_CRITERIA']['min_age']} years old")
-        if data.get("tbi_year") != study_config["QUALIFICATION_CRITERIA"].get("tbi_year", "Yes"): disqualification_reasons.append("you have not experienced a TBI at least one year ago")
-        if data.get("memory_issues") != study_config["QUALIFICATION_CRITERIA"].get("memory_issues", "Yes"): disqualification_reasons.append("you do not have persistent memory problems")
-        if data.get("english_fluent") != study_config["QUALIFICATION_CRITERIA"].get("english_fluent", "Yes"): disqualification_reasons.append("you are not fluent in English")
-        if data.get("can_exercise") != study_config["QUALIFICATION_CRITERIA"].get("can_exercise", "Yes"): disqualification_reasons.append("you are not willing or able to exercise")
-        if data.get("can_mri") != study_config["QUALIFICATION_CRITERIA"].get("can_mri", "Yes"): disqualification_reasons.append("you are not able to undergo an MRI")
-        
-        # 5. Conditional SMS and Monday.com Push based on qualification and future_study_consent
-        final_message_for_sms = "" # Message to show before SMS code entry
+        tags = []
+
+        # Process age rule first (assumed always present)
+        age_rule = next((rule for rule in study_config["QUALIFICATION_RULES"] if rule.get("type") == "age"), None)
+        if age_rule:
+            if not (age >= age_rule["value"]):
+                qualified = False
+                disqualification_reasons.append(age_rule["disqual_message"])
+
+        # Process distance rule (if present)
+        distance_rule = next((rule for rule in study_config["QUALIFICATION_RULES"] if rule.get("type") == "distance"), None)
+        distance_ok = True # Default to True if no distance rule or if coords invalid
+        ip_info_text = ""
+
+        if distance_rule:
+            coords = get_coords_from_city_state(city_state_value)
+            if not coords or not coords.get("latitude") or not coords.get("longitude"):
+                return {"status": "error", "message": "⚠️ Sorry, we couldn't determine your location from the provided City/State. Please ensure it's correct (e.g., 'Newark, NJ')."}
+            
+            # Target coords are directly in study config (e.g., KESSLER_COORDS or CONCORD_COORDS)
+            # Need to get target_coords and distance_threshold_miles from the config, which are at the module level.
+            # Currently, they are not loaded into 'study_config' in load_study_config
+            # This needs to be fixed in load_study_config and in the individual study configs.
+            # For now, let's assume they are directly available from the config:
+            target_coords = getattr(importlib.import_module(f"configs.study_{study_id}"), "KESSLER_COORDS", None) # Default to Kessler's if not found
+            distance_threshold_miles = getattr(importlib.import_module(f"configs.study_{study_id}"), "DISTANCE_THRESHOLD_MILES", None) # Default
+
+            if study_id == "concord_stonybrook": # Overriding for concord to use its specific coords
+                target_coords = getattr(importlib.import_module(f"configs.study_{study_id}"), "CONCORD_COORDS", None)
+            
+            if target_coords and distance_threshold_miles is not None:
+                distance_ok = is_within_distance(coords.get("latitude"), coords.get("longitude"), 
+                                                 target_coords, 
+                                                 distance_threshold_miles)
+            else:
+                print(f"WARNING: Distance check rule present but target_coords or distance_threshold_miles not found in config for {study_id}.")
+                distance_ok = True # Proceed as if distance is okay if config is incomplete
+
+            if not distance_ok:
+                qualified = False
+                disqualification_reasons.append(distance_rule["disqual_message"])
+                tags.append("Too far")
+
+        # Handle handedness tag (general, not a disqualifier)
+        if data.get("handedness") == "Left-handed":
+            tags.append("Left-handed")
+
+        # Process general qualification rules
+        for rule in study_config["QUALIFICATION_RULES"]:
+            if rule.get("type") in ["age", "distance", "complex"]: # Already handled or will be handled
+                continue
+
+            field_value = data.get(rule["field"])
+            rule_met = False
+
+            if rule["operator"] == "equals":
+                if field_value == rule["value"]:
+                    rule_met = True
+            elif rule["operator"] == "not_equals":
+                if field_value != rule["value"]:
+                    rule_met = True
+            # Add other operators as needed (e.g., greater_than, less_than)
+
+            if not rule_met:
+                qualified = False
+                disqualification_reasons.append(rule["disqual_message"])
+            
+        # Handle complex qualification logic (e.g., for Concord's CKD/GFR)
+        if study_id == "concord_stonybrook" and qualified: # Only if previous checks passed
+            # Specific logic for CKD/GFR based on your description
+            is_ckd_gfr_yes = (data.get("ckd_gfr") == "Yes")
+            is_kidney_transplant_6months_yes = (data.get("kidney_transplant_6months") == "Yes")
+            is_kidney_transplant_not_applicable = (data.get("kidney_transplant_6months") == "Not Applicable")
+            is_gfr_less_45_yes = (data.get("gfr_less_45") == "Yes")
+
+            ckd_gfr_qualified_concord = True
+
+            if not is_ckd_gfr_yes: # If main CKD question is No, disqualify
+                ckd_gfr_qualified_concord = False
+                disqualification_reasons.append("you do not have chronic kidney disease (CKD) at the required stage or a kidney transplant with the specified GFR")
+            else: # ckd_gfr is "Yes"
+                # If they have a kidney transplant, it must be >= 6 months, OR it's "Not Applicable" (no transplant)
+                if not (is_kidney_transplant_yes or is_kidney_transplant_not_applicable):
+                    ckd_gfr_qualified_concord = False
+                    disqualification_reasons.append("your kidney transplant has not been at least 6 months ago, or you did not provide applicable information")
+                
+                # GFR must be < 45 if CKD/GFR is "Yes"
+                if not is_gfr_less_45_yes:
+                    ckd_gfr_qualified_concord = False
+                    disqualification_reasons.append("your most recent kidney filtration rate (GFR) is not less than 45")
+            
+            qualified = qualified and ckd_gfr_qualified_concord # Combine with previous checks
+
+
+        # 5. Determine final group, tags, and SMS/Monday.com push logic
+        final_message_for_sms = ""
         push_to_monday_flag = False
         sms_required_flag = False
         
-        # Scenario 1: Qualified - Always SMS and Push
+        # Get SMS messages from config, with fallbacks
+        sms_qualified_msg = study_config["SMS_MESSAGES"].get("qualified", "✅ Thank you! Based on your answers, you may qualify for a study.")
+        sms_future_consent_msg = study_config["SMS_MESSAGES"].get("future_consent", "Thank you for your interest. Based on your answers, you do not meet the current study criteria, but since you opted for future studies, we will verify your contact information.")
+        sms_prompt_msg = study_config["SMS_MESSAGES"].get("sms_prompt", "Please check your phone for a 4-digit verification code.")
+
+
         if qualified:
             sms_required_flag = True
             push_to_monday_flag = True
-            final_message_for_sms = "✅ Thank you! Based on your answers, you may qualify for a TBI study."
+            group = study_config["QUALIFIED_GROUP_ID"]
+            final_message_for_sms = sms_qualified_msg
 
-        # Scenario 2: Not Qualified, but consented for future studies - SMS and Push
         elif not qualified and data.get("future_study_consent") == "I, confirm":
             sms_required_flag = True
-            push_to_monday_flag = True # Even if disqualified, push if they want future studies
-            final_message_for_sms = "Thank you for your interest. Based on your answers, you do not meet the current study criteria, but since you opted for future studies, we will verify your contact information."
+            push_to_monday_flag = True
+            group = study_config["DISQUALIFIED_GROUP_ID"] # Still disqualified, but capture for future
+            final_message_for_sms = sms_future_consent_msg
 
-        # Scenario 3: Not Qualified AND NO consent for future studies - No SMS, No Push
         else: # not qualified and data.get("future_study_consent") == "I, do not confirm"
             push_to_monday_flag = False
             sms_required_flag = False
+            group = study_config["DISQUALIFIED_GROUP_ID"] # No push, but conceptually in disqualified group if we tracked it
             if len(disqualification_reasons) > 0:
                 reasons_str = ", and ".join([", ".join(disqualification_reasons[:-1]), disqualification_reasons[-1]]) if len(disqualification_reasons) > 1 else disqualification_reasons[0]
                 final_message_for_sms = f"Thank you for your interest. Unfortunately, based on your answers, you do not meet the current study criteria because {reasons_str}. We appreciate your time."
             else:
                 final_message_for_sms = "Thank you for your interest. Unfortunately, based on your answers, you do not meet the current study criteria. We appreciate your time."
             
-            # If no SMS/push, this is the final message.
             return {"status": "disqualified_no_capture", "message": final_message_for_sms}
 
-        # If SMS is required, we proceed to send it and return specific status to frontend
+        # Prepare IP info text
+        ip_info_data = get_location_from_ip(ip_address) if ip_address else {}
+        ip_info_text_parts = []
+        if ip_info_data:
+            ip_info_text_parts.append(f"IP: {ip_info_data.get('ip', 'N/A')}")
+            if ip_info_data.get('city') and ip_info_data.get('region'):
+                ip_info_text_parts.append(f"Location (IP): {ip_info_data['city']}, {ip_info_data['region']}, {ip_info_data.get('country', '')}")
+            if ip_info_data.get('org'):
+                ip_info_text_parts.append(f"Org: {ip_info_data['org']}")
+        ip_info_text = "\n".join(ip_info_text_parts)
+
+        # Store session data if SMS required
         if sms_required_flag:
             verification_code = generate_verification_code()
             submission_id = str(uuid.uuid4())
-            sessions[submission_id] = { # Store data and config for verification step
+            sessions[submission_id] = {
                 "data": data,
                 "code": verification_code,
                 "push_to_monday_flag": push_to_monday_flag,
                 "group": group,
                 "qualified": qualified,
                 "tags": tags,
-                "ip_info_text": "\n".join([f"{k}: {v}" for k, v in get_location_from_ip(ip_address).items()]) if ip_address else "",
-                "monday_board_id": study_config["MONDAY_BOARD_ID"] # Store board ID for verification step
+                "ip_info_text": ip_info_text,
+                "monday_board_id": study_config["MONDAY_BOARD_ID"],
+                "monday_column_mappings": study_config["MONDAY_COLUMN_MAPPINGS"], # Pass mappings
+                "monday_dropdown_allowed_tags": study_config["MONDAY_DROPDOWN_ALLOWED_TAGS"] # Pass allowed tags
             }
             
             phone_number = data.get("phone", "")
@@ -364,9 +410,9 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
             sms_success, sms_error_msg = send_verification_sms(formatted_phone_number, verification_code)
             
             if sms_success:
-                return {"status": "sms_required", "submission_id": submission_id, "message": final_message_for_sms + " Please check your phone for a 4-digit verification code."}
+                return {"status": "sms_required", "submission_id": submission_id, "message": final_message_for_sms + " " + sms_prompt_msg}
             else:
-                del sessions[submission_id] # Clean up temporary session data if SMS fails
+                del sessions[submission_id]
                 print(f"SMS sending failed for form submission {formatted_phone_number}: {sms_error_msg}")
                 return {"status": "error", "message": f"❌ Failed to send SMS for verification: {sms_error_msg}. Please check your phone number and try again."}
 
@@ -378,5 +424,3 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
         print(f"❌ General error processing form submission: {e}")
         traceback.print_exc()
         return {"status": "error", "message": "An unexpected error occurred during qualification. Please try again."}
-
-# --- NEW FUNCTION END: For Smart Form Submission ---

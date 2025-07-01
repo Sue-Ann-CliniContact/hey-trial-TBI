@@ -49,6 +49,20 @@ MONDAY_COLUMN_MAPPINGS = {
     # "study_interest_keywords" will be mapped to the 'text' column (Source) in push_to_monday
 }
 
+# --- Qualification Criteria ---
+# Defines the specific rules for a 'qualified' lead for this study
+QUALIFICATION_CRITERIA = {
+    "min_age": 18,
+    "tbi_year": "Yes",
+    "memory_issues": "Yes",
+    "english_fluent": "Yes",
+    "can_exercise": "Yes",
+    "can_mri": "Yes",
+    "distance_check_required": True, # Set to True if distance check is needed
+    "target_coords": KESSLER_COORDS, # The coordinates for distance check
+    "distance_threshold_miles": DISTANCE_THRESHOLD_MILES # Max distance allowed
+}
+
 # --- Monday.com Dropdown Tags (for the 'dropdown' column) ---
 # These tags MUST exist as labels in your Monday.com dropdown column!
 MONDAY_DROPDOWN_ALLOWED_TAGS = ["Too far", "Left-handed", "fraudulent"] # Add any other fixed tags here
@@ -78,45 +92,3 @@ All clinical studies are reviewed and approved by independent ethical review boa
 """
 
 FORM_TITLE = "Kessler TBI Study Qualification" # Example title for this specific form
-
-# configs/study_tbi_kessler.py (Add these sections or modify existing ones)
-
-# ... (existing imports and constants) ...
-
-# --- QUALIFICATION RULES ---
-# Each rule specifies:
-# - 'field': The form field name
-# - 'operator': How to compare ('equals', 'not_equals', 'greater_than_or_equal', 'less_than')
-# - 'value': The target value for qualification
-# - 'disqual_message': Message if this rule is NOT met (used for user feedback)
-# - 'type': (Optional) helps for complex logic ('age', 'distance', 'complex')
-QUALIFICATION_RULES = [
-    {"field": "age", "operator": "greater_than_or_equal", "value": 18, "type": "age", "disqual_message": "you are under 18 years old"},
-    {"field": "distance", "operator": "less_than_or_equal", "value": "threshold", "type": "distance", "disqual_message": "you are located outside the eligible distance from our research site"},
-    {"field": "tbi_year", "operator": "equals", "value": "Yes", "disqual_message": "you have not experienced a TBI at least one year ago"},
-    {"field": "memory_issues", "operator": "equals", "value": "Yes", "disqual_message": "you do not have persistent memory problems"},
-    {"field": "english_fluent", "operator": "equals", "value": "Yes", "disqual_message": "you are not fluent in English"},
-    {"field": "can_exercise", "operator": "equals", "value": "Yes", "disqual_message": "you are not willing or able to exercise"},
-    {"field": "can_mri", "operator": "equals", "value": "Yes", "disqual_message": "you are not able to undergo an MRI"}
-]
-
-# --- Study-Specific SMS Messages ---
-SMS_MESSAGES = {
-    "qualified": "✅ Thank you! Based on your answers, you may qualify for a TBI study.",
-    "future_consent": "Thank you for your interest. Based on your answers, you do not meet the current study criteria, but since you opted for future studies, we will verify your contact information.",
-    "sms_prompt": "Please check your phone for a 4-digit verification code."
-}
-
-# IMPORTANT: Remove QUALIFICATION_CRITERIA dictionary, as its logic is replaced by QUALIFICATION_RULES
-# Old:
-# QUALIFICATION_CRITERIA = {
-#     "min_age": 18,
-#     "tbi_year": "Yes",
-#     "memory_issues": "Yes",
-#     "english_fluent": "Yes",
-#     "can_exercise": "Yes",
-#     "can_mri": "Yes",
-#     "distance_check_required": True,
-#     "target_coords": KESSLER_COORDS,
-#     "distance_threshold_miles": DISTANCE_THRESHOLD_MILES
-# }
