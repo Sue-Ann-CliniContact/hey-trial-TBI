@@ -381,7 +381,6 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     }}
                 }});
 
-                // This is the *ONLY* form submit listener
                 qualificationForm.addEventListener('submit', async function(event) {{
                     console.log('Form submission initiated.'); // Debug log
                     event.preventDefault(); // Prevent default form submission (Crucial for POST)
@@ -389,52 +388,58 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
 
-                    // Correctly collect data from the form, considering only visible fields
-                    const data = {{}};
-                    const fieldsInConfig = study_config_js.FORM_FIELDS;
+                    // ... (rest of form data collection and validation logic) ...
 
-                    let allFieldsValid = true; // Initialize validation flag
-
-                    fieldsInConfig.forEach(field => {{
-                        const container = document.getElementById(`field-${{field.name}}-container`);
-                        // Check if the field's container is visible (or if it doesn't have a container/conditional logic)
-                        const isVisible = !container || container.style.display !== 'none';
-
-                        if (isVisible) {{
-                            let fieldValue;
-                            const inputElement = qualificationForm.elements[field.name]; // <-- This inputElement
-
-                            // Handle radio buttons specifically as formData.get might give the first value, not checked
-                            if (inputElement && inputElement.length && inputElement[0].type === 'radio') {{
-                                const checkedRadio = Array.from(inputElement).find(radio => radio.checked);
-                                fieldValue = checkedRadio ? checkedRadio.value : '';
-                            }} else if (inputElement && inputElement.nodeType === Node.ELEMENT_NODE) {{ // Ensure it's a single element
-                                fieldValue = inputElement.value;
-                            }} else {{
-                                fieldValue = ''; // Fallback if input element not found (shouldn't happen with correct config)
-                            }}
-                            data[field.name] = fieldValue;
-
-                            // Perform validation for visible and required fields
-                            const error = validateField(field.name, fieldValue, field);
-                            const errorDiv = document.getElementById(`${{field.name}}Error`);
-
-                            if (errorDiv) errorDiv.textContent = error;
-                            if (inputElement) {{
-                                // FIX: Apply class toggling based on element type
-                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{ // Single input element (text, email, tel)
-                                    inputElement.classList.toggle('border-red-500', !!error);
-                                    inputElement.classList.toggle('border-gray-300', !error);
-                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{ // RadioNodeList
-                                    container.classList.toggle('border-red-500', !!error);
-                                    container.classList.toggle('border-gray-300', !error);
-                                }}
-                            }}
-                            if (error) {{
-                                allFieldsValid = false;
-                            }}
+                    try {{
+                        const response = await fetch(`${{BASE_URL}}/qualify_form`, {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify(data), // Send the collected 'data' object
+                        }});
+                        
+                        // FIX: Check if the response is a redirect for initial form submission
+                        if (response.redirected) {{
+                            console.log('Redirect detected after initial form submission. Browser will navigate automatically.');
+                            return; // Stop further JavaScript execution in this block
                         }}
-                    }});
+
+                        // Only attempt to parse as JSON if it's NOT a redirect (e.g., for 'sms_required' status)
+                        const result = await response.json(); // AWAIT the JSON parsing
+                        console.log('Form submission fetch result:', result); // Debug log
+
+                        if (result.status === 'sms_required') {{
+                            currentSubmissionId = result.submission_id;
+                            smsVerifyMessageP.textContent = result.message;
+                            qualificationForm.classList.add('hidden');
+                            smsVerifySection.classList.remove('hidden');
+                            console.log('SMS verification required. Displaying SMS section.'); // Debug log
+                        }} else if (result.status === 'qualified' || result.status === 'disqualified_no_capture' || result.status === 'duplicate') {{
+                            // This branch should ideally not be hit if a redirect occurs for these statuses,
+                            // but remains as a fallback if the backend's redirect logic changes.
+                            resultMessageP.textContent = result.message;
+                            qualificationForm.classList.add('hidden');
+                            smsVerifySection.classList.add('hidden'); // Ensure SMS section is hidden
+                            resultSection.classList.remove('hidden');
+                            console.log('Submission complete. Displaying result section (non-redirect path).'); // Debug log
+                        }} else if (result.status === 'error') {{
+                            generalErrorDiv.classList.remove('hidden');
+                            generalErrorMessageSpan.textContent = result.message;
+                            console.error('Submission returned an error:', result.message); // Debug log
+                        }} else {{
+                            generalErrorDiv.classList.remove('hidden');
+                            generalErrorMessageSpan.textContent = 'An unexpected response was received.';
+                            console.error('Submission returned unexpected status:', result.status); // Debug log
+                        }}
+                    }} catch (err) {{
+                        console.error('Error during form submission fetch (likely parsing JSON when expecting redirect):', err);
+                        generalErrorDiv.classList.remove('hidden');
+                        generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
+                    }} finally {{
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Submit Qualification';
+                        console.log('Submission process finished.'); // Debug log
+                    }}
+                }});
 
                     data.study_id = qualificationForm.elements['study_id'].value; // Ensure study_id is always added
 
