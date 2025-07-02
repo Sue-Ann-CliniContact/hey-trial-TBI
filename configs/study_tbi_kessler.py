@@ -79,10 +79,6 @@ All clinical studies are reviewed and approved by independent ethical review boa
 
 FORM_TITLE = "Kessler TBI Study Qualification" # Example title for this specific form
 
-# configs/study_tbi_kessler.py (Add these sections or modify existing ones)
-
-# ... (existing imports and constants) ...
-
 # --- QUALIFICATION RULES ---
 # Each rule specifies:
 # - 'field': The form field name
@@ -104,19 +100,5 @@ QUALIFICATION_RULES = [
 SMS_MESSAGES = {
     "qualified": "✅ Thank you! Based on your answers, you may qualify for a TBI study.",
     "future_consent": "Thank you for your interest. Based on your answers, you do not meet the current study criteria, but since you opted for future studies, we will verify your contact information.",
-    "sms_prompt": "Please check your phone for a 4-digit verification code."
+    "sms_prompt": "Your confirmation code is {}. Please enter this code to confirm your submission." # CHANGE THIS LINE
 }
-
-# IMPORTANT: Remove QUALIFICATION_CRITERIA dictionary, as its logic is replaced by QUALIFICATION_RULES
-# Old:
-# QUALIFICATION_CRITERIA = {
-#     "min_age": 18,
-#     "tbi_year": "Yes",
-#     "memory_issues": "Yes",
-#     "english_fluent": "Yes",
-#     "can_exercise": "Yes",
-#     "can_mri": "Yes",
-#     "distance_check_required": True,
-#     "target_coords": KESSLER_COORDS,
-#     "distance_threshold_miles": DISTANCE_THRESHOLD_MILES
-# }

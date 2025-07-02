@@ -404,7 +404,7 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
             submission_id = str(uuid.uuid4())
 
             # Construct the FULL SMS message body AFTER verification_code is generated
-            full_sms_message_body = final_message_for_sms + " " + sms_prompt_msg + f" Your code is {verification_code}."
+            full_sms_message_body = f"{final_message_for_sms} {sms_prompt_msg.format(verification_code)}" # FIX THIS LINE
 
             sessions[submission_id] = {
                 "data": data,

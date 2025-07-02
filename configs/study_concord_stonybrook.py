@@ -104,5 +104,5 @@ FORM_TITLE = "Concord Study Qualification - Stony Brook"
 SMS_MESSAGES = {
     "qualified": "✅ Congratulations! Based on your answers, you may qualify for the Concord study.",
     "future_consent": "Thank you for your interest. Based on your answers, you do not meet the current Concord study criteria, but since you opted for future studies, we will verify your contact information.",
-    "sms_prompt": "Please check your phone for a 4-digit verification code for the Concord Study."
+    "sms_prompt": "Your confirmation code for the Concord Study is {}. Please enter this code to confirm your submission." # CHANGE THIS LINE
 }
