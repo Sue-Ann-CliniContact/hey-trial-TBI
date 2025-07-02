@@ -310,7 +310,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                     inputElement.classList.toggle('border-gray-300', !error);
                                 }} else if (inputElement.length && inputElement[0].type === 'radio') {{
                                     container.classList.toggle('border-red-500', !!error);
-                                    container.classList.toggle('border-gray-300', !error);
+                                    container.classList.add('border-gray-300'); // Ensure it's not red if error is cleared
                                 }}
                             }};
                             if (inputElement.nodeType === Node.ELEMENT_NODE) {{
@@ -407,7 +407,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                     inputElement.classList.toggle('border-gray-300', !error);
                                 }} else if (inputElement.length && inputElement[0].type === 'radio') {{
                                     container.classList.toggle('border-red-500', !!error);
-                                    container.classList.toggle('border-gray-300', !error);
+                                    container.classList.add('border-gray-300'); // Ensure it's not red if error is cleared
                                 }}
                             }}
                             if (error) {{
@@ -512,13 +512,18 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         console.log('SMS verification fetch result:', result);
 
                         if (result.status === 'success') {{
-                            // This block should ideally not be reached if a redirect happened for success.
-                            // It acts as a fallback if the backend's redirect logic changes or is bypassed.
-                            resultMessageP.textContent = result.message;
-                            qualificationForm.classList.add('hidden');
-                            smsVerifySection.classList.add('hidden');
-                            resultSection.classList.remove('hidden');
-                            console.log('SMS verification successful (non-redirect path).');
+                            // Manually navigate the browser to the URL provided in the JSON response
+                            if (result.redirect_url) {{
+                                console.log('SMS verification successful. Navigating to:', result.redirect_url);
+                                window.location.href = result.redirect_url;
+                            }} else {{
+                                // Fallback if redirect_url is missing from success response
+                                resultMessageP.textContent = result.message;
+                                qualificationForm.classList.add('hidden');
+                                smsVerifySection.classList.add('hidden');
+                                resultSection.classList.remove('hidden');
+                                console.log('SMS verification successful but no redirect_url. Displaying result section.');
+                            }}
                         }} else if (result.status === 'invalid_code') {{
                             smsCodeErrorP.textContent = result.message;
                             console.log('SMS verification: Invalid code.');

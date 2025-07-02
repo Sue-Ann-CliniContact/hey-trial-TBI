@@ -276,4 +276,3 @@ async def verify_code(sms_input: SMSVerificationInput):
     else:
         # Code did not match
         return {"status": "invalid_code", "message": "❌ That code doesn't match. Please try again."}
-        
