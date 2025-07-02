@@ -430,22 +430,29 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     submitButton.textContent = 'Submitting...';
 
                     try {{
+                        // Set redirect mode to 'manual' to prevent automatic following by fetch
                         const response = await fetch(`${{BASE_URL}}/qualify_form`, {{
                             method: 'POST',
                             headers: {{ 'Content-Type': 'application/json' }},
                             body: JSON.stringify(data),
+                            redirect: 'manual' // Crucial change here
                         }});
                         
-                        // IMPORTANT: If a redirect occurred, the browser has already handled navigation.
-                        // We do NOT need to parse JSON or manipulate the DOM here.
-                        if (response.redirected) {{
-                            console.log('Redirect detected after initial form submission. Browser is navigating automatically.');
-                            // The browser will handle the navigation to the new URL.
-                            // No further JavaScript logic is needed here for this path.
-                            return; 
+                        // Check if the response is a redirect (3xx status code)
+                        if (response.status >= 300 && response.status < 400) {{
+                            const redirectUrl = response.headers.get('Location');
+                            if (redirectUrl) {{
+                                console.log('Manual redirect detected. Navigating to:', redirectUrl);
+                                window.location.href = redirectUrl; // Manually navigate the browser
+                                return; // Stop further JavaScript execution
+                            }} else {{
+                                console.error('Redirect status received but no Location header found.');
+                                generalErrorDiv.classList.remove('hidden');
+                                generalErrorMessageSpan.textContent = 'A redirect error occurred. Please try again.';
+                            }}
                         }}
 
-                        // If NOT redirected, then we expect a JSON response (e.g., 'sms_required' or an error)
+                        // If not a redirect, proceed to parse JSON (e.g., for 'sms_required' status)
                         const result = await response.json();
                         console.log('Form submission fetch result:', result);
 
@@ -456,8 +463,8 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             smsVerifySection.classList.remove('hidden');
                             console.log('SMS verification required. Displaying SMS section.');
                         }} else if (result.status === 'qualified' || result.status === 'disqualified_no_capture' || result.status === 'duplicate') {{
-                            // This block should ideally not be reached if a redirect happened for these statuses.
-                            // It acts as a fallback if the backend's redirect logic changes or is bypassed.
+                            // This block should theoretically not be reached if the backend correctly sends 303.
+                            // It's a fallback for unexpected non-redirecting success responses.
                             resultMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.add('hidden');
@@ -473,7 +480,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             console.error('Submission returned unexpected status:', result.status);
                         }}
                     }} catch (err) {{
-                        console.error('Error during form submission fetch (could be network or unexpected response):', err);
+                        console.error('Error during form submission fetch:', err);
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'A network error occurred or an unexpected response was received. Please try again.';
                     }} finally {{
@@ -499,34 +506,34 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     verifyCodeButton.textContent = 'Verifying...';
 
                     try {{
+                        // Set redirect mode to 'manual' to prevent automatic following by fetch
                         const response = await fetch(`${{BASE_URL}}/verify_code`, {{
                             method: 'POST',
                             headers: {{ 'Content-Type': 'application/json' }},
                             body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
+                            redirect: 'manual' // Crucial change here
                         }});
                         
-                        // IMPORTANT: If a redirect occurred, the browser has already handled navigation.
-                        // We do NOT need to parse JSON or manipulate the DOM here.
-                        if (response.redirected) {{
-                            console.log('Redirect detected after SMS verification. Browser is navigating automatically.');
-                            // Clean up the current view before the browser navigates
-                            smsVerifySection.classList.add('hidden');
-                            smsCodeInput.value = '';
-                            smsCodeErrorP.textContent = '';
-                            generalErrorDiv.classList.add('hidden');
-                            generalErrorMessageSpan.textContent = '';
-                            // The browser will handle the navigation to the new URL.
-                            // No further JavaScript logic is needed here for this path.
-                            return; 
+                        // Check if the response is a redirect (3xx status code)
+                        if (response.status >= 300 && response.status < 400) {{
+                            const redirectUrl = response.headers.get('Location');
+                            if (redirectUrl) {{
+                                console.log('Manual redirect detected. Navigating to:', redirectUrl);
+                                window.location.href = redirectUrl; // Manually navigate the browser
+                                return; // Stop further JavaScript execution
+                            }} else {{
+                                console.error('Redirect status received but no Location header found.');
+                                smsCodeErrorP.textContent = 'A redirect error occurred during verification. Please try again.';
+                            }}
                         }}
 
-                        // If NOT redirected, then we expect a JSON response (e.g., 'invalid_code' or an error)
+                        // If not a redirect, proceed to parse JSON (e.g., for 'invalid_code' or an error)
                         const result = await response.json();
                         console.log('SMS verification fetch result:', result);
 
                         if (result.status === 'success') {{
-                            // This block should ideally not be reached if a redirect happened for success.
-                            // It acts as a fallback if the backend's redirect logic changes or is bypassed.
+                            // This block should theoretically not be reached if the backend correctly sends 303.
+                            // It's a fallback for unexpected non-redirecting success responses.
                             resultMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.add('hidden');
@@ -543,7 +550,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             console.error('SMS verification returned unexpected status:', result.status);
                         }}
                     }} catch (err) {{
-                        console.error('Error during SMS verification fetch (could be network or unexpected response):', err);
+                        console.error('Error during SMS verification fetch:', err);
                         smsCodeErrorP.textContent = 'A network error occurred or an unexpected response was received during verification. Please try again.';
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
