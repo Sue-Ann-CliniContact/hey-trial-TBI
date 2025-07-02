@@ -497,7 +497,10 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
 
                 verifyCodeButton.addEventListener('click', async function() {{
                     console.log('Verify code button clicked.'); // Debug log
-                    smsCodeErrorP.textContent = '';
+                    smsCodeErrorP.textContent = ''; // Clear previous SMS errors
+                    generalErrorDiv.classList.add('hidden'); // Clear general errors too, just in case
+                    generalErrorMessageSpan.textContent = '';
+
                     const code = smsCodeInput.value.trim();
                     if (!code || code.length !== 4) {{
                         smsCodeErrorP.textContent = 'Please enter a 4-digit code.';
@@ -508,50 +511,53 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     verifyCodeButton.textContent = 'Verifying...';
 
                     try {{
-                        // FIX: Do not await response.json() if backend redirects
-                        // Let the browser handle the redirect automatically
                         const response = await fetch(`${{BASE_URL}}/verify_code`, {{
                             method: 'POST',
                             headers: {{ 'Content-Type': 'application/json' }},
                             body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
                         }});
                         
-                        // If the response is a redirect (303), the browser will handle it.
-                        // We only need to process JSON if it's NOT a redirect (e.g., invalid code)
                         if (response.redirected) {{
-                            console.log('Redirect detected. Browser will navigate automatically.');
-                            // No need to process JSON or update UI here, browser handles navigation
-                            return; 
+                            console.log('Redirect detected after SMS verification. Browser will navigate automatically.');
+                            // FIX: Explicitly hide SMS section and clear errors before redirect takes full effect
+                            smsVerifySection.classList.add('hidden');
+                            smsCodeInput.value = '';
+                            smsCodeErrorP.textContent = '';
+                            generalErrorDiv.classList.add('hidden');
+                            generalErrorMessageSpan.textContent = '';
+                            return; // Stop further JavaScript execution in this block
                         }}
 
-                        // Only if NOT redirected (e.g., a "400 Bad Request" or "invalid_code" JSON response)
-                        const result = await response.json(); // AWAIT the JSON parsing
-                        console.log('SMS verification fetch result:', result); // Debug log
+                        const result = await response.json();
+                        console.log('SMS verification fetch result:', result);
 
                         if (result.status === 'success') {{
-                            // This path should ideally not be hit if a redirect occurs,
+                            // This path should ideally not be hit if a redirect occurs for success,
                             // but can be a fallback or for non-redirecting success types
                             resultMessageP.textContent = result.message;
+                            qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.add('hidden');
                             resultSection.classList.remove('hidden');
-                            console.log('SMS verification successful.'); // Debug log
+                            console.log('SMS verification successful (non-redirect path).');
                         }} else if (result.status === 'invalid_code') {{
                             smsCodeErrorP.textContent = result.message;
-                            console.log('SMS verification: Invalid code.'); // Debug log
+                            console.log('SMS verification: Invalid code.');
                         }} else if (result.status === 'error') {{
                             smsCodeErrorP.textContent = 'A network error occurred during verification. Please try again.';
-                            console.error('SMS verification returned an error:', result.message); // Debug log
+                            console.error('SMS verification returned an error:', result.message);
                         }} else {{
                             smsCodeErrorP.textContent = 'An unexpected response was received.';
-                            console.error('SMS verification returned unexpected status:', result.status); // Debug log
+                            console.error('SMS verification returned unexpected status:', result.status);
                         }}
                     }} catch (err) {{
-                        console.error('Error during SMS verification fetch:', err); // More specific debug log
-                        smsCodeErrorP.textContent = 'A network error occurred during verification. Please try again.';
+                        console.error('Error during SMS verification fetch (likely parsing JSON when expecting redirect):', err);
+                        smsCodeErrorP.textContent = 'A network error occurred. Please try again.';
+                        generalErrorDiv.classList.remove('hidden'); # Ensure general error shown if network error
+                        generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
                     }} finally {{
                         verifyCodeButton.disabled = false;
                         verifyCodeButton.textContent = 'Verify Code';
-                        console.log('SMS verification process finished.'); // Debug log
+                        console.log('SMS verification process finished.');
                     }}
                 }});
 
