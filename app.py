@@ -169,11 +169,12 @@ async def verify_code(sms_input: SMSVerificationInput):
             
             # Formulate final success message based on original qualification
             if qualified:
-                message = "✅ Your submission is confirmed! Based on your answers, you may qualify for a TBI study. We will contact you soon with more details."
+                # Use the study_title from config
+                message = f"✅ Your submission is confirmed! Based on your answers, you may qualify for the {study_title}. We will contact you soon with more details."
             else: # Not qualified but consented for future studies
                 message = "✅ Your submission is confirmed! Based on your answers, you do not meet the current study criteria, but your information has been saved for future studies you may qualify for."
             
-            return {"status": "success", "message": message}
+            return {"status": "success", "message": message}            
         
         except Exception as e:
             print(f"Error during final Monday push after code verification: {e}")
