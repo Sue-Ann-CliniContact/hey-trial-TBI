@@ -383,8 +383,66 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     console.log('event.preventDefault() called.'); // Debug log
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
+                    
+                    // Correctly collect data from the form, considering only visible fields
+                    const data = {{}};
+                    const fieldsInConfig = study_config_js.FORM_FIELDS;
 
-                    // ... (rest of form data collection and validation logic) ...
+                    let allFieldsValid = true; // Initialize validation flag
+
+                    fieldsInConfig.forEach(field => {{
+                        const container = document.getElementById(`field-${{field.name}}-container`);
+                        // Check if the field's container is visible (or if it doesn't have a container/conditional logic)
+                        const isVisible = !container || container.style.display !== 'none';
+
+                        if (isVisible) {{
+                            let fieldValue;
+                            const inputElement = qualificationForm.elements[field.name]; // <-- This inputElement
+
+                            // Handle radio buttons specifically as formData.get might give the first value, not checked
+                            if (inputElement && inputElement.length && inputElement[0].type === 'radio') {{
+                                const checkedRadio = Array.from(inputElement).find(radio => radio.checked);
+                                fieldValue = checkedRadio ? checkedRadio.value : '';
+                            }} else if (inputElement && inputElement.nodeType === Node.ELEMENT_NODE) {{ // Ensure it's a single element
+                                fieldValue = inputElement.value;
+                            }} else {{
+                                fieldValue = ''; // Fallback if input element not found (shouldn't happen with correct config)
+                            }}
+                            data[field.name] = fieldValue;
+
+                            // Perform validation for visible and required fields
+                            const error = validateField(field.name, fieldValue, field);
+                            const errorDiv = document.getElementById(`${{field.name}}Error`);
+
+                            if (errorDiv) errorDiv.textContent = error;
+                            if (inputElement) {{
+                                // FIX: Apply class toggling based on element type
+                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{ // Single input element (text, email, tel)
+                                    inputElement.classList.toggle('border-red-500', !!error);
+                                    inputElement.classList.toggle('border-gray-300', !error);
+                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{ // RadioNodeList
+                                    container.classList.toggle('border-red-500', !!error);
+                                    container.classList.toggle('border-gray-300', !error);
+                                }}
+                            }}
+                            if (error) {{
+                                allFieldsValid = false;
+                            }}
+                        }}
+                    }});
+
+                    data.study_id = qualificationForm.elements['study_id'].value; // Ensure study_id is always added
+
+                    if (!allFieldsValid) {{
+                        generalErrorDiv.classList.remove('hidden');
+                        generalErrorMessageSpan.textContent = 'Please correct the errors in the form.';
+                        console.log('Form validation failed. Not submitting.'); // Debug log
+                        return; // Stop submission if validation fails
+                    }}
+
+                    console.log('Form validated. Attempting fetch...'); // Debug log
+                    submitButton.disabled = true;
+                    submitButton.textContent = 'Submitting...';
 
                     try {{
                         const response = await fetch(`${{BASE_URL}}/qualify_form`, {{
