@@ -452,9 +452,12 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         }});
                         
                         // FIX: Check if the response is a redirect for initial form submission
+                        // If a redirect is detected, the browser will handle it automatically.
+                        // No need to parse JSON or manipulate the DOM here.
                         if (response.redirected) {{
                             console.log('Redirect detected after initial form submission. Browser will navigate automatically.');
-                            return; // Stop further JavaScript execution in this block
+                            // The browser will handle the navigation, so no more JS needed here for this path.
+                            return; 
                         }}
 
                         // Only attempt to parse as JSON if it's NOT a redirect (e.g., for 'sms_required' status)
@@ -517,15 +520,17 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
                         }});
                         
+                        // If a redirect is detected, the browser will handle it automatically.
+                        // No need to parse JSON or manipulate the DOM here.
                         if (response.redirected) {{
                             console.log('Redirect detected after SMS verification. Browser will navigate automatically.');
-                            // FIX: Explicitly hide SMS section and clear errors before redirect takes full effect
+                            // Clean up the current view before the browser navigates
                             smsVerifySection.classList.add('hidden');
                             smsCodeInput.value = '';
                             smsCodeErrorP.textContent = '';
                             generalErrorDiv.classList.add('hidden');
                             generalErrorMessageSpan.textContent = '';
-                            return; // Stop further JavaScript execution in this block
+                            return; 
                         }}
 
                         const result = await response.json();
