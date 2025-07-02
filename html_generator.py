@@ -308,9 +308,6 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             const validateAndShowError = () => {{
                                 const error = validateField(field.name, inputElement.value, field);
                                 if (errorDiv) errorDiv.textContent = error;
-                                # REMOVE OR SIMPLIFY THIS LINE:
-                                # console.log(`Validating field: ${{field.name}}, type: ${{inputElement.type}}, error: ${{!!error}}`); 
-
                                 if (inputElement.nodeType === Node.ELEMENT_NODE) {{
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
