@@ -552,7 +552,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     }} catch (err) {{
                         console.error('Error during SMS verification fetch (likely parsing JSON when expecting redirect):', err);
                         smsCodeErrorP.textContent = 'A network error occurred. Please try again.';
-                        generalErrorDiv.classList.remove('hidden'); # Ensure general error shown if network error
+                        generalErrorDiv.classList.remove('hidden'); // Ensure general error shown if network error
                         generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
                     }} finally {{
                         verifyCodeButton.disabled = false;
