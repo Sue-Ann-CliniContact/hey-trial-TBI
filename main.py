@@ -404,7 +404,7 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
             submission_id = str(uuid.uuid4())
 
             # Construct the FULL SMS message body AFTER verification_code is generated
-            full_sms_message_body = f"{final_message_for_sms} {sms_prompt_msg.format(verification_code)}" # FIX THIS LINE
+            full_sms_message_body = sms_prompt_msg.format(verification_code)
 
             sessions[submission_id] = {
                 "data": data,
@@ -427,7 +427,7 @@ def process_qualification_submission_from_form(form_data: Dict[str, Any], study_
             
             if sms_success:
                 # The message returned to frontend is just the initial part for display
-                return {"status": "sms_required", "submission_id": submission_id, "message": final_message_for_sms + " " + sms_prompt_msg}
+                return {"status": "sms_required", "submission_id": submission_id, "message": final_message_for_sms}
             else:
                 del sessions[submission_id]
                 print(f"SMS sending failed for form submission {formatted_phone_number}: {sms_error_msg}")
