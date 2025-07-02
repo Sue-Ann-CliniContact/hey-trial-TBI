@@ -56,17 +56,24 @@ QUALIFICATION_RULES = [
     {"field": "psychotherapy_treatment", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving or have received psychotherapy"},
 
     # CKD/GFR Complex Logic - Represented as a sequence of dependent rules
-    # Rule 1: Must have CKD stage 3b, 4, or 5 OR kidney transplant with GFR < 45
-    {"field": "ckd_gfr", "operator": "equals", "value": "Yes", "disqual_message": "you do not have chronic kidney disease (CKD) at the required stage or a kidney transplant with the specified GFR", "rule_id": "ckd_main_check"},
+    # This rule represents the overall CKD/GFR qualification
+    {"field": "ckd_gfr_group_check", "operator": "custom_logic", "type": "complex",
+     "disqual_message": "you do not meet the kidney disease or GFR criteria.",
+     "complex_rules": [
+        # Rule 1: Must have CKD stage 3b, 4, or 5 OR kidney transplant with GFR < 45
+        {"field": "ckd_gfr", "operator": "equals", "value": "Yes", "disqual_message": "you do not have CKD at the required stage or a kidney transplant with the specified GFR"},
 
-    # Rule 2: If ckd_gfr is Yes, and kidney_transplant_6months is NOT "Not Applicable", then it must be "Yes"
-    # This rule is conditional on 'ckd_main_check' being true.
-    # And its application depends on the 'kidney_transplant_6months' answer
-    {"field": "kidney_transplant_6months", "operator": "equals", "value": "Yes", "disqual_message": "your kidney transplant has not been at least 6 months ago", "depends_on": {"rule_id": "ckd_main_check", "value_of": "ckd_gfr", "is": "Yes", "skip_if_field": "kidney_transplant_6months", "skip_value": "Not Applicable"}},
+        # Rule 2: If ckd_gfr is Yes, kidney_transplant_6months must be "Yes" OR "Not Applicable"
+        # This rule is conditional on 'ckd_main_check' being true.
+        {"field": "kidney_transplant_6months", "operator": "in_list", "value": ["Yes", "Not Applicable"], # <-- MODIFIED LINE
+         "disqual_message": "your kidney transplant has not been at least 6 months ago, or is not applicable to your situation if you don't have CKD stage 3b, 4, or 5, or a kidney transplant", # Updated message for clarity
+         "conditional": {"field": "ckd_gfr", "value": "Yes"}},
 
-    # Rule 3: If ckd_gfr is Yes, then gfr_less_45 must be Yes
-    # This rule is conditional on 'ckd_main_check' being true.
-    {"field": "gfr_less_45", "operator": "equals", "value": "Yes", "disqual_message": "your most recent kidney filtration rate (GFR) is not less than 45", "depends_on": {"rule_id": "ckd_main_check", "value_of": "ckd_gfr", "is": "Yes"}}
+        # Rule 3: If ckd_gfr is Yes, then gfr_less_45 must be Yes
+        {"field": "gfr_less_45", "operator": "equals", "value": "Yes",
+         "disqual_message": "your most recent kidney filtration rate (GFR) is not less than 45",
+         "conditional": {"field": "ckd_gfr", "value": "Yes"}}
+     ]}
 ]
 
 # --- Monday.com Column Mappings ---
