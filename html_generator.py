@@ -197,7 +197,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
             const BASE_URL = "{backend_base_url}";
             if (!BASE_URL) console.error("RENDER_EXTERNAL_URL environment variable not set!");
 
-            // FIX: Correctly escape backslashes in regexes for JavaScript string literal
+            // Correctly escape backslashes in regexes for JavaScript string literal
             const EMAIL_REGEX = new RegExp("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\.[a-zA-Z]{{2,}}$");
             const PHONE_REGEX = new RegExp("^[+]?1?[-. ]?\\\\(?\\\\d{{3}}\\\\)?[-. ]?\\\\d{{3}}[-. ]?\\\\d{{4}}$");
 
@@ -257,7 +257,6 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             const age = calculateAge(value);
                             if (age === null) error = 'Invalid date format (MM/DD/YYYY).';
                             else {{
-                                // FIX: Get min_age dynamically from QUALIFICATION_RULES
                                 const ageRule = study_config_js.QUALIFICATION_RULES.find(rule => rule.type === 'age' && rule.operator === 'greater_than_or_equal');
                                 if (ageRule && age < ageRule.value) {{
                                     error = `You must be ${{ageRule.value}} or older to participate.`;
@@ -270,13 +269,13 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         break;
                 }}
                 if (error) {{
-                    console.error(`Validation Error for ${{name}}: ${{error}}`); // Added debug log
+                    console.error(`Validation Error for ${{name}}: ${{error}}`);
                 }}
                 return error;
             }}
 
             document.addEventListener('DOMContentLoaded', function() {{
-                console.log('DOM Content Loaded. Initializing form elements...'); // Debug log
+                console.log('DOM Content Loaded. Initializing form elements...');
                 qualificationForm = document.getElementById('qualificationForm');
                 submitButton = document.getElementById('submitButton');
                 generalErrorDiv = document.getElementById('generalError');
@@ -290,19 +289,17 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 resultMessageP = document.getElementById('resultMessage');
                 startNewButton = document.getElementById('startNewButton');
 
-                const fields = study_config_js.FORM_FIELDS; // Use study_config_js here
+                const fields = study_config_js.FORM_FIELDS;
 
                 fields.forEach(field => {{
                     const inputElement = qualificationForm.elements[field.name];
                     const container = document.getElementById(`field-${{field.name}}-container`);
                     
-                    // Add debug log to see what inputElement and container are for each field
-                    console.log(`Processing field: ${{field.name}}`); // Debug
-                    console.log(`  inputElement:`, inputElement); // Debug
-                    console.log(`  container:`, container); // Debug
+                    console.log(`Processing field: ${{field.name}}`);
+                    console.log(`  inputElement:`, inputElement);
+                    console.log(`  container:`, container);
 
-                    if (inputElement && container) {{ // Ensure elements exist and are usable
-                        // Attach validation listeners
+                    if (inputElement && container) {{
                         if (field.validation) {{
                             const errorDiv = document.getElementById(`${{field.name}}Error`);
                             const validateAndShowError = () => {{
@@ -316,12 +313,10 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                     container.classList.toggle('border-gray-300', !error);
                                 }}
                             }};
-                            // For individual inputs, attach directly
                             if (inputElement.nodeType === Node.ELEMENT_NODE) {{
                                 inputElement.addEventListener('blur', validateAndShowError);
                                 inputElement.addEventListener('input', validateAndShowError);
                             }}
-                            // For radio button groups, attach listener to all in group
                             if (inputElement.length && inputElement[0].type === 'radio') {{
                                 Array.from(qualificationForm.elements[field.name]).forEach(radio => {{
                                     radio.addEventListener('change', validateAndShowError);
@@ -329,13 +324,11 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             }}
                         }}
 
-                        // FIX 4: Conditional display logic for dynamic fields
                         if (field.conditional_on) {{
-                            const controllingFieldElements = qualificationForm.elements[field.conditional_on.field]; // Get all elements by name
+                            const controllingFieldElements = qualificationForm.elements[field.conditional_on.field];
                             if (controllingFieldElements) {{
                                 const updateVisibility = () => {{
                                     let controllingValue;
-                                    // Check if it's a radio button group
                                     if (controllingFieldElements.length && controllingFieldElements[0].type === 'radio') {{
                                         const checkedRadio = Array.from(controllingFieldElements).find(radio => radio.checked);
                                         controllingValue = checkedRadio ? checkedRadio.value : '';
@@ -346,24 +339,21 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                     const isVisible = controllingValue === field.conditional_on.value;
                                     container.style.display = isVisible ? 'block' : 'none';
                                     if (!isVisible) {{
-                                        // Clear value and errors if hidden
                                         if (inputElement.type === 'radio') {{
                                             Array.from(qualificationForm.elements[field.name]).forEach(radio => radio.checked = false);
-                                        }} else {{
+                                        }} else if (inputElement.nodeType === Node.ELEMENT_NODE) {{
                                             inputElement.value = '';
                                         }}
                                         const errorDiv = document.getElementById(`${{field.name}}Error`);
                                         if (errorDiv) errorDiv.textContent = '';
-                                        // Ensure inputElement is a single DOM element before removing classList
                                         if (inputElement.nodeType === Node.ELEMENT_NODE) {{
                                             inputElement.classList.remove('border-red-500');
                                             inputElement.classList.add('border-gray-300');
                                         }}
-                                        container.classList.remove('border-red-500'); // Clear container error for radios
+                                        container.classList.remove('border-red-500');
                                         container.classList.add('border-gray-300');
                                     }}
                                 }};
-                                // Attach listener to all elements in the controlling group (for radios)
                                 if (controllingFieldElements.length && controllingFieldElements[0].type === 'radio') {{
                                     Array.from(controllingFieldElements).forEach(radio => {{
                                         radio.addEventListener('change', updateVisibility);
@@ -371,56 +361,51 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                                 }} else {{
                                     controllingFieldElements.addEventListener('change', updateVisibility);
                                 }}
-                                updateVisibility(); // Set initial visibility on load
+                                updateVisibility();
                             }}
                         }}
                     }}
                 }});
 
                 qualificationForm.addEventListener('submit', async function(event) {{
-                    console.log('Form submission initiated.'); // Debug log
-                    event.preventDefault(); // Prevent default form submission (Crucial for POST)
-                    console.log('event.preventDefault() called.'); // Debug log
+                    console.log('Form submission initiated.');
+                    event.preventDefault();
+                    console.log('event.preventDefault() called.');
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
                     
-                    // Correctly collect data from the form, considering only visible fields
                     const data = {{}};
                     const fieldsInConfig = study_config_js.FORM_FIELDS;
 
-                    let allFieldsValid = true; // Initialize validation flag
+                    let allFieldsValid = true;
 
                     fieldsInConfig.forEach(field => {{
                         const container = document.getElementById(`field-${{field.name}}-container`);
-                        // Check if the field's container is visible (or if it doesn't have a container/conditional logic)
                         const isVisible = !container || container.style.display !== 'none';
 
                         if (isVisible) {{
                             let fieldValue;
-                            const inputElement = qualificationForm.elements[field.name]; // <-- This inputElement
+                            const inputElement = qualificationForm.elements[field.name];
 
-                            // Handle radio buttons specifically as formData.get might give the first value, not checked
                             if (inputElement && inputElement.length && inputElement[0].type === 'radio') {{
                                 const checkedRadio = Array.from(inputElement).find(radio => radio.checked);
                                 fieldValue = checkedRadio ? checkedRadio.value : '';
-                            }} else if (inputElement && inputElement.nodeType === Node.ELEMENT_NODE) {{ // Ensure it's a single element
+                            }} else if (inputElement && inputElement.nodeType === Node.ELEMENT_NODE) {{
                                 fieldValue = inputElement.value;
                             }} else {{
-                                fieldValue = ''; // Fallback if input element not found (shouldn't happen with correct config)
+                                fieldValue = '';
                             }}
                             data[field.name] = fieldValue;
 
-                            // Perform validation for visible and required fields
                             const error = validateField(field.name, fieldValue, field);
                             const errorDiv = document.getElementById(`${{field.name}}Error`);
 
                             if (errorDiv) errorDiv.textContent = error;
                             if (inputElement) {{
-                                // FIX: Apply class toggling based on element type
-                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{ // Single input element (text, email, tel)
+                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
-                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{ // RadioNodeList
+                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{
                                     container.classList.toggle('border-red-500', !!error);
                                     container.classList.toggle('border-gray-300', !error);
                                 }}
@@ -431,16 +416,16 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         }}
                     }});
 
-                    data.study_id = qualificationForm.elements['study_id'].value; // Ensure study_id is always added
+                    data.study_id = qualificationForm.elements['study_id'].value;
 
                     if (!allFieldsValid) {{
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'Please correct the errors in the form.';
-                        console.log('Form validation failed. Not submitting.'); // Debug log
-                        return; // Stop submission if validation fails
+                        console.log('Form validation failed. Not submitting.');
+                        return;
                     }}
 
-                    console.log('Form validated. Attempting fetch...'); // Debug log
+                    console.log('Form validated. Attempting fetch...');
                     submitButton.disabled = true;
                     submitButton.textContent = 'Submitting...';
 
@@ -448,60 +433,60 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         const response = await fetch(`${{BASE_URL}}/qualify_form`, {{
                             method: 'POST',
                             headers: {{ 'Content-Type': 'application/json' }},
-                            body: JSON.stringify(data), // Send the collected 'data' object
+                            body: JSON.stringify(data),
                         }});
                         
-                        // FIX: Check if the response is a redirect for initial form submission
-                        // If a redirect is detected, the browser will handle it automatically.
-                        // No need to parse JSON or manipulate the DOM here.
+                        // IMPORTANT: If a redirect occurred, the browser has already handled navigation.
+                        // We do NOT need to parse JSON or manipulate the DOM here.
                         if (response.redirected) {{
-                            console.log('Redirect detected after initial form submission. Browser will navigate automatically.');
-                            // The browser will handle the navigation, so no more JS needed here for this path.
+                            console.log('Redirect detected after initial form submission. Browser is navigating automatically.');
+                            // The browser will handle the navigation to the new URL.
+                            // No further JavaScript logic is needed here for this path.
                             return; 
                         }}
 
-                        // Only attempt to parse as JSON if it's NOT a redirect (e.g., for 'sms_required' status)
-                        const result = await response.json(); // AWAIT the JSON parsing
-                        console.log('Form submission fetch result:', result); // Debug log
+                        // If NOT redirected, then we expect a JSON response (e.g., 'sms_required' or an error)
+                        const result = await response.json();
+                        console.log('Form submission fetch result:', result);
 
                         if (result.status === 'sms_required') {{
                             currentSubmissionId = result.submission_id;
                             smsVerifyMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.remove('hidden');
-                            console.log('SMS verification required. Displaying SMS section.'); // Debug log
+                            console.log('SMS verification required. Displaying SMS section.');
                         }} else if (result.status === 'qualified' || result.status === 'disqualified_no_capture' || result.status === 'duplicate') {{
-                            // This branch should ideally not be hit if a redirect occurs for these statuses,
-                            // but remains as a fallback if the backend's redirect logic changes.
+                            // This block should ideally not be reached if a redirect happened for these statuses.
+                            // It acts as a fallback if the backend's redirect logic changes or is bypassed.
                             resultMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
-                            smsVerifySection.classList.add('hidden'); // Ensure SMS section is hidden
+                            smsVerifySection.classList.add('hidden');
                             resultSection.classList.remove('hidden');
-                            console.log('Submission complete. Displaying result section (non-redirect path).'); // Debug log
+                            console.log('Submission complete. Displaying result section (non-redirect path).');
                         }} else if (result.status === 'error') {{
                             generalErrorDiv.classList.remove('hidden');
                             generalErrorMessageSpan.textContent = result.message;
-                            console.error('Submission returned an error:', result.message); // Debug log
+                            console.error('Submission returned an error:', result.message);
                         }} else {{
                             generalErrorDiv.classList.remove('hidden');
                             generalErrorMessageSpan.textContent = 'An unexpected response was received.';
-                            console.error('Submission returned unexpected status:', result.status); // Debug log
+                            console.error('Submission returned unexpected status:', result.status);
                         }}
                     }} catch (err) {{
-                        console.error('Error during form submission fetch (likely parsing JSON when expecting redirect):', err);
+                        console.error('Error during form submission fetch (could be network or unexpected response):', err);
                         generalErrorDiv.classList.remove('hidden');
-                        generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
+                        generalErrorMessageSpan.textContent = 'A network error occurred or an unexpected response was received. Please try again.';
                     }} finally {{
                         submitButton.disabled = false;
                         submitButton.textContent = 'Submit Qualification';
-                        console.log('Submission process finished.'); // Debug log
+                        console.log('Submission process finished.');
                     }}
                 }});
 
                 verifyCodeButton.addEventListener('click', async function() {{
-                    console.log('Verify code button clicked.'); // Debug log
-                    smsCodeErrorP.textContent = ''; // Clear previous SMS errors
-                    generalErrorDiv.classList.add('hidden'); // Clear general errors too, just in case
+                    console.log('Verify code button clicked.');
+                    smsCodeErrorP.textContent = '';
+                    generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
 
                     const code = smsCodeInput.value.trim();
@@ -520,25 +505,28 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
                         }});
                         
-                        // If a redirect is detected, the browser will handle it automatically.
-                        // No need to parse JSON or manipulate the DOM here.
+                        // IMPORTANT: If a redirect occurred, the browser has already handled navigation.
+                        // We do NOT need to parse JSON or manipulate the DOM here.
                         if (response.redirected) {{
-                            console.log('Redirect detected after SMS verification. Browser will navigate automatically.');
+                            console.log('Redirect detected after SMS verification. Browser is navigating automatically.');
                             // Clean up the current view before the browser navigates
                             smsVerifySection.classList.add('hidden');
                             smsCodeInput.value = '';
                             smsCodeErrorP.textContent = '';
                             generalErrorDiv.classList.add('hidden');
                             generalErrorMessageSpan.textContent = '';
+                            // The browser will handle the navigation to the new URL.
+                            // No further JavaScript logic is needed here for this path.
                             return; 
                         }}
 
+                        // If NOT redirected, then we expect a JSON response (e.g., 'invalid_code' or an error)
                         const result = await response.json();
                         console.log('SMS verification fetch result:', result);
 
                         if (result.status === 'success') {{
-                            // This path should ideally not be hit if a redirect occurs for success,
-                            // but can be a fallback or for non-redirecting success types
+                            // This block should ideally not be reached if a redirect happened for success.
+                            // It acts as a fallback if the backend's redirect logic changes or is bypassed.
                             resultMessageP.textContent = result.message;
                             qualificationForm.classList.add('hidden');
                             smsVerifySection.classList.add('hidden');
@@ -555,9 +543,9 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             console.error('SMS verification returned unexpected status:', result.status);
                         }}
                     }} catch (err) {{
-                        console.error('Error during SMS verification fetch (likely parsing JSON when expecting redirect):', err);
-                        smsCodeErrorP.textContent = 'A network error occurred. Please try again.';
-                        generalErrorDiv.classList.remove('hidden'); // Ensure general error shown if network error
+                        console.error('Error during SMS verification fetch (could be network or unexpected response):', err);
+                        smsCodeErrorP.textContent = 'A network error occurred or an unexpected response was received during verification. Please try again.';
+                        generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
                     }} finally {{
                         verifyCodeButton.disabled = false;
@@ -567,7 +555,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                 }});
 
                 startNewButton.addEventListener('click', function() {{
-                    console.log('Start New Qualification button clicked. Resetting form.'); // Debug log
+                    console.log('Start New Qualification button clicked. Resetting form.');
                     qualificationForm.reset();
                     generalErrorDiv.classList.add('hidden');
                     generalErrorMessageSpan.textContent = '';
@@ -579,7 +567,7 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     smsVerifySection.classList.add('hidden');
                     resultSection.classList.add('hidden');
 
-                    const fields = study_config_js.FORM_FIELDS; // Use study_config_js here
+                    const fields = study_config_js.FORM_FIELDS;
                     fields.forEach(field => {{
                         if (field.conditional_on) {{
                             const inputElement = qualificationForm.elements[field.name];
@@ -602,7 +590,6 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             inputElement.classList.remove('border-red-500');
                             inputElement.classList.add('border-gray-300');
                         }}
-                        // For radio button containers, also clear styling on reset
                         else if (inputElement && inputElement.length && inputElement[0].type === 'radio' && container) {{
                             container.classList.remove('border-red-500');
                             container.classList.add('border-gray-300');
