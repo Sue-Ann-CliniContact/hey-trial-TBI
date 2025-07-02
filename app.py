@@ -1,9 +1,10 @@
+# app.py
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse # Added RedirectResponse for redirects
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
-from urllib.parse import quote # Added quote for URL encoding
 
 # Import necessary functions from main.py
 from main import (
@@ -12,14 +13,10 @@ from main import (
     sessions
 )
 
-# Import generate_html_form from html_generator.py
 from html_generator import generate_html_form
-
-# Import push_to_monday and check_duplicate_email
 from push_to_monday import push_to_monday
 from check_duplicate import check_duplicate_email
 
-# Import StaticFiles for serving images (logo, favicon)
 from fastapi.staticfiles import StaticFiles
 
 import os
@@ -29,13 +26,11 @@ import traceback
 
 app = FastAPI()
 
-# Mount static files directory for images (clini-logo.png, favicon.png)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# CORS for frontend (e.g. your Monday.com App, or Webflow)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Adjust for production: e.g., ["https://your-monday-app.cdn.monday.app", "https://your-webflow-domain.com"]
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,25 +66,12 @@ class SMSVerificationInput(BaseModel):
     submission_id: str
     code: str
 
-# --- NEW ENDPOINT: Dynamically serve HTML form ---
-@app.get("/form/{study_id}", response_class=HTMLResponse)
-async def get_study_form(study_id: str):
-    """
-    Serves a dynamically generated HTML qualification form for a given study_id.
-    """
-    study_config = load_study_config(study_id)
-    if not study_config:
-        raise HTTPException(status_code=404, detail=f"Study form '{study_id}' not found or configured.")
-    
-    html_content = generate_html_form(study_config, study_id)
-    return HTMLResponse(content=html_content)
-
 # NEW ENDPOINT: Dynamic Thank You Page
 @app.get("/form/{study_id}/thank-you", response_class=HTMLResponse)
 async def thank_you_page(study_id: str, status: Optional[str] = "qualified", message: Optional[str] = "Your submission has been received."):
     """
     Serves a dynamic thank you page after successful form submission or SMS verification.
-    The 'status' and 'message' query parameters can be used to customize content.
+    The 'status' and 'message' query parameters can be used to alleviate content.
     """
     # Basic check for valid status
     valid_statuses = ["qualified", "disqualified_no_capture", "duplicate", "error"]
@@ -134,8 +116,7 @@ async def thank_you_page(study_id: str, status: Optional[str] = "qualified", mes
           function gtag(){{dataLayer.push(arguments);}}
           gtag('js', new Date());
           gtag('config', 'G-S2CHKR5MYY');
-
-          // Send a conversion event based on status (Google Analytics 4)
+          // Send a conversion event based on status
           gtag('event', 'form_submission_status', {{
             'event_category': 'form_submission',
             'event_label': '{status}', // e.g., 'qualified', 'disqualified_no_capture', 'duplicate'
@@ -152,9 +133,8 @@ async def thank_you_page(study_id: str, status: Optional[str] = "qualified", mes
           s.parentNode.insertBefore(t,s)}}(window, document,'script',
           'https://connect.facebook.net/en_US/fbevents.js');
           fbq('init', '156500797479357');
-          fbq('track', 'PageView'); // Track page view on initial load of thank-you page
-
-          // Send a custom conversion event (Facebook Pixel)
+          fbq('track', 'PageView');
+          // Send a custom conversion event
           fbq('trackCustom', 'FormSubmit', {{status: '{status}'}});
         </script>
         <noscript><img height="1" width="1" style="display:none"
@@ -183,7 +163,7 @@ async def thank_you_page(study_id: str, status: Optional[str] = "qualified", mes
 
 # --- ENDPOINT: For Smart Form Submission ---
 @app.post("/qualify_form")
-async def qualify_form_submit(form_data: Dict[str, Any], request: Request):
+async def qualify_form_submit(form_data: Dict[str, Any], request: Request): # Accept Dict[str, Any]
     # Extract study_id from the form_data payload
     study_id = form_data.get("study_id")
     if not study_id:
@@ -200,7 +180,7 @@ async def qualify_form_submit(form_data: Dict[str, Any], request: Request):
         if result.get("status") == "sms_required":
             return result
         
-        # For immediate statuses (qualified, disqualified, duplicate), redirect to thank-you page
+        # FIX: For immediate statuses (qualified, disqualified, duplicate), redirect to thank-you page
         # Encode the message to pass it as a URL parameter
         encoded_message = quote(result.get("message", "Submission received."))
         return RedirectResponse(
@@ -235,7 +215,7 @@ async def verify_code(sms_input: SMSVerificationInput):
             tags = submission_data["tags"]
             ip_info_text = submission_data["ip_info_text"]
             monday_board_id = submission_data["monday_board_id"]
-
+            
             study_id_for_verify = data_to_push.get("study_id")
             verify_study_config = load_study_config(study_id_for_verify)
             
@@ -251,7 +231,7 @@ async def verify_code(sms_input: SMSVerificationInput):
             # Clean up temporary session data
             del sessions[sms_input.submission_id]
             
-            # Formulate final success message dynamically using study_config
+            # FIX: Formulate final success message dynamically using study_config
             study_title = verify_study_config.get("FORM_TITLE", "a study")
             
             if qualified:
@@ -259,7 +239,7 @@ async def verify_code(sms_input: SMSVerificationInput):
             else: # Not qualified but consented for future studies
                 message = "✅ Your submission is confirmed! Based on your answers, you do not meet the current study criteria, but your information has been saved for future studies you may qualify for."
             
-            # Redirect to thank-you page after successful verification
+            # FIX: Redirect to thank-you page after successful verification
             # The message is generated here, then encoded and passed
             encoded_message = quote(message)
             return RedirectResponse(
