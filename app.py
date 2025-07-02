@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
+from urllib.parse import quote
 
 # Import necessary functions from main.py
 from main import (
@@ -68,19 +69,24 @@ class SMSVerificationInput(BaseModel):
 
 @app.get("/form/{study_id}", response_class=HTMLResponse)
 async def get_study_form(study_id: str):
+    """
+    Serves a dynamically generated HTML qualification form for a given study_id.
+    """
     try:
         study_config = load_study_config(study_id)
-        if not study_config: # This path should ideally not be hit with direct FileNotFoundError/ImportError
-            raise HTTPException(status_code=404, detail=f"Study form '{study_id}' not found or configured (unknown reason).")
+        if not study_config:
+            # This path is hit if load_study_config prints an error and returns None
+            raise HTTPException(status_code=404, detail=f"Study form '{study_id}' not found or configured.")
 
         html_content = generate_html_form(study_config, study_id)
-        return HTMLResponse(content=html_content)
+        return HTMLResponse(content=html_content) # <--- This is the correct return for success
     except (FileNotFoundError, ImportError, SyntaxError) as e:
+        # Catch specific errors from load_study_config and return 500
         raise HTTPException(status_code=500, detail=f"Server configuration error for study '{study_id}': {e}")
     except Exception as e:
+        # Catch any other unexpected errors during form generation/loading
         raise HTTPException(status_code=500, detail=f"An unexpected server error occurred while loading form for '{study_id}': {e}")
-    html_content = generate_html_form(study_config, study_id)
-    return HTMLResponse(content=html_content)
+    # REMOVED: No more lines here. The function ends with the above returns/raises.
 
 # NEW ENDPOINT: Dynamic Thank You Page
 @app.get("/form/{study_id}/thank-you", response_class=HTMLResponse)
