@@ -503,15 +503,29 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                     verifyCodeButton.textContent = 'Verifying...';
 
                     try {{
+                        // FIX: Do not await response.json() if backend redirects
+                        // Let the browser handle the redirect automatically
                         const response = await fetch(`${{BASE_URL}}/verify_code`, {{
                             method: 'POST',
                             headers: {{ 'Content-Type': 'application/json' }},
                             body: JSON.stringify({{ submission_id: currentSubmissionId, code: code }}),
                         }});
+                        
+                        // If the response is a redirect (303), the browser will handle it.
+                        // We only need to process JSON if it's NOT a redirect (e.g., invalid code)
+                        if (response.redirected) {{
+                            console.log('Redirect detected. Browser will navigate automatically.');
+                            // No need to process JSON or update UI here, browser handles navigation
+                            return; 
+                        }}
+
+                        // Only if NOT redirected (e.g., a "400 Bad Request" or "invalid_code" JSON response)
                         const result = await response.json(); // AWAIT the JSON parsing
                         console.log('SMS verification fetch result:', result); // Debug log
 
                         if (result.status === 'success') {{
+                            // This path should ideally not be hit if a redirect occurs,
+                            // but can be a fallback or for non-redirecting success types
                             resultMessageP.textContent = result.message;
                             smsVerifySection.classList.add('hidden');
                             resultSection.classList.remove('hidden');
