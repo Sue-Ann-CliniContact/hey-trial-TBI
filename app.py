@@ -108,6 +108,8 @@ async def thank_you_page(study_id: str, status: Optional[str] = "qualified", mes
     icon_html = ""
     display_message = message
 
+    backend_base_url = os.getenv('RENDER_EXTERNAL_URL', "http://localhost:8000")
+
     if status == "qualified":
         icon_html = '<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-green-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>'
     elif status == "disqualified_no_capture":
@@ -116,8 +118,6 @@ async def thank_you_page(study_id: str, status: Optional[str] = "qualified", mes
         icon_html = '<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-blue-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>'
     elif status == "error":
         icon_html = '<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-red-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>'
-
-    backend_base_url = os.getenv('RENDER_EXTERNAL_URL', "http://localhost:8000")
 
     html_content = f"""
     <!DOCTYPE html>
@@ -253,7 +253,7 @@ async def verify_code(sms_input: SMSVerificationInput):
             # Clean up temporary session data
             del sessions[sms_input.submission_id]
             
-            # FIX: Formulate final success message dynamically using study_config
+            # Formulate final success message dynamically using study_config
             study_title = verify_study_config.get("FORM_TITLE", "a study")
             
             if qualified:
@@ -261,23 +261,18 @@ async def verify_code(sms_input: SMSVerificationInput):
             else: # Not qualified but consented for future studies
                 message = "✅ Your submission is confirmed! Based on your answers, you do not meet the current study criteria, but your information has been saved for future studies you may qualify for."
             
-            # FIX: Redirect to thank-you page after successful verification
-            # The message is generated here, then encoded and passed
-            encoded_message = quote(message)
-            return RedirectResponse(
-                url=f"/form/{study_id_for_verify}/thank-you?status={'qualified' if qualified else 'disqualified_no_capture'}&message={encoded_message}",
-                status_code=303
-            )
+            # FIX: Return a JSON success message instead of a redirect
+            return {
+                "status": "success", 
+                "message": message,
+                "redirect_url": f"/form/{study_id_for_verify}/thank-you?status={'qualified' if qualified else 'disqualified_no_capture'}&message={quote(message)}"
+            }
         
         except Exception as e:
             print(f"Error during final Monday push after code verification: {e}")
             traceback.print_exc()
-            # For verification errors, redirect to error state on thank-you page
-            encoded_error_message = quote("An error occurred during final submission. Please try again.")
-            return RedirectResponse(
-                url=f"/form/{study_id_for_verify}/thank-you?status=error&message={encoded_error_message}",
-                status_code=303
-            )
+            # For verification errors, return an error status
+            return {"status": "error", "message": "An error occurred during final submission. Please try again."}
     else:
         # Code did not match
         return {"status": "invalid_code", "message": "❌ That code doesn't match. Please try again."}
