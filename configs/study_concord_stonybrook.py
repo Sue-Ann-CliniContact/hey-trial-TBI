@@ -31,6 +31,7 @@ FORM_FIELDS = [
     {"name": "current_depression_medication", "label": "Are you currently taking medication for depression?", "type": "radio", "options": ["Yes", "No"], "required": True},
     {"name": "untreatable_cancer", "label": "Do you have terminal lung disease, untreatable cancer or are you receiving chemotherapy or radiation for cancer?", "type": "radio", "options": ["Yes", "No"], "required": True},
     {"name": "liver_disease", "label": "Do you have liver disease?", "type": "radio", "options": ["Yes", "No"], "required": True},
+    {"name": "psychotherapy_treatment", "label": "Are you currently receiving or have you received psychotherapy in the past 3 months?", "type": "radio", "options": ["Yes", "No"], "required": True},
     {"name": "seizure_disorder", "label": "Do you have a seizure disorder?", "type": "radio", "options": ["Yes", "No"], "required": True},
     {"name": "dialysis", "label": "Are you currently receiving hemodialysis or peritoneal dialysis?", "type": "radio", "options": ["Yes", "No"], "required": True},
     {"name": "current_depression_therapy", "label": "Are you currently receiving therapy for depression?", "type": "radio", "options": ["Yes", "No"], "required": True},
@@ -52,6 +53,7 @@ QUALIFICATION_RULES = [
     {"field": "seizure_disorder", "operator": "equals", "value": "No", "disqual_message": "you have a seizure disorder"},
     {"field": "dialysis", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving hemodialysis or peritoneal dialysis"},
     {"field": "current_depression_therapy", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving therapy for depression"},
+    {"field": "psychotherapy_treatment", "operator": "equals", "value": "No", "disqual_message": "you are currently receiving or have received psychotherapy"},
 
     # CKD/GFR Complex Logic - Represented as a sequence of dependent rules
     # Rule 1: Must have CKD stage 3b, 4, or 5 OR kidney transplant with GFR < 45
@@ -83,6 +85,7 @@ MONDAY_COLUMN_MAPPINGS = {
     "seizure_disorder": "color_mksezh83", # Maps to "Do you have a seizure disorder?" column ID: color_mksezh83
     "dialysis": "color_mkseyk6t", # Maps to "Are you currently receiving hemodialysis or peritoneal dialysis?" column ID: color_mkseyk6t
     "current_depression_therapy": "single_select7", # Maps to "Are you currently receiving therapy for depression?" column ID: single_select7
+    "psychotherapy_treatment": "single_select9", # Maps to "Are you currently receiving therapy for depression?" column ID: single_select9
     "medications_list": "text_mksed511", # Maps to "Please list all medications you are currently taking:" column ID: text_mksed511
     "future_study_consent": "single_select__1", # Maps to "Consent Request for Future Studies" column ID: single_select__1
     "stony_brook_qualified": "boolean_mks56vyg", # Maps to "Stony Brook Study Qualified" checkbox
