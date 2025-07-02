@@ -308,14 +308,13 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                             const validateAndShowError = () => {{
                                 const error = validateField(field.name, inputElement.value, field);
                                 if (errorDiv) errorDiv.textContent = error;
-                                console.log(`Validating field: ${{field.name}}, type: ${{inputElement.type}}, error: ${{!!error}}`); // More specific debug log
-                                
-                                // FIX: Ensure inputElement is a single element before accessing classList directly
-                                // For radio groups, inputElement is a RadioNodeList, not a single element
-                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{ // Checks if it's a single DOM element
+                                # REMOVE OR SIMPLIFY THIS LINE:
+                                # console.log(`Validating field: ${{field.name}}, type: ${{inputElement.type}}, error: ${{!!error}}`); 
+
+                                if (inputElement.nodeType === Node.ELEMENT_NODE) {{
                                     inputElement.classList.toggle('border-red-500', !!error);
                                     inputElement.classList.toggle('border-gray-300', !error);
-                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{ // It's a RadioNodeList
+                                }} else if (inputElement.length && inputElement[0].type === 'radio') {{
                                     container.classList.toggle('border-red-500', !!error);
                                     container.classList.toggle('border-gray-300', !error);
                                 }}
@@ -432,60 +431,6 @@ def generate_html_form(study_config: Dict[str, Any], study_id: str) -> str:
                         }}
                     }} catch (err) {{
                         console.error('Error during form submission fetch (likely parsing JSON when expecting redirect):', err);
-                        generalErrorDiv.classList.remove('hidden');
-                        generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
-                    }} finally {{
-                        submitButton.disabled = false;
-                        submitButton.textContent = 'Submit Qualification';
-                        console.log('Submission process finished.'); // Debug log
-                    }}
-                }});
-
-                    data.study_id = qualificationForm.elements['study_id'].value; // Ensure study_id is always added
-
-                    if (!allFieldsValid) {{
-                        generalErrorDiv.classList.remove('hidden');
-                        generalErrorMessageSpan.textContent = 'Please correct the errors in the form.';
-                        console.log('Form validation failed. Not submitting.'); // Debug log
-                        return; // Stop submission if validation fails
-                    }}
-
-                    console.log('Form validated. Attempting fetch...'); // Debug log
-                    submitButton.disabled = true;
-                    submitButton.textContent = 'Submitting...';
-
-                    try {{
-                        const response = await fetch(`${{BASE_URL}}/qualify_form`, {{
-                            method: 'POST',
-                            headers: {{ 'Content-Type': 'application/json' }},
-                            body: JSON.stringify(data), // Send the collected 'data' object
-                        }});
-                        const result = await response.json(); // AWAIT the JSON parsing
-                        console.log('Form submission fetch result:', result); // Debug log
-
-                        if (result.status === 'sms_required') {{
-                            currentSubmissionId = result.submission_id;
-                            smsVerifyMessageP.textContent = result.message;
-                            qualificationForm.classList.add('hidden');
-                            smsVerifySection.classList.remove('hidden');
-                            console.log('SMS verification required. Displaying SMS section.'); // Debug log
-                        }} else if (result.status === 'qualified' || result.status === 'disqualified_no_capture' || result.status === 'duplicate') {{
-                            resultMessageP.textContent = result.message;
-                            qualificationForm.classList.add('hidden');
-                            smsVerifySection.classList.add('hidden'); // Ensure SMS section is hidden
-                            resultSection.classList.remove('hidden');
-                            console.log('Submission complete. Displaying result section.'); // Debug log
-                        }} else if (result.status === 'error') {{
-                            generalErrorDiv.classList.remove('hidden');
-                            generalErrorMessageSpan.textContent = result.message;
-                            console.error('Submission returned an error:', result.message); // Debug log
-                        }} else {{
-                            generalErrorDiv.classList.remove('hidden');
-                            generalErrorMessageSpan.textContent = 'An unexpected response was received.';
-                            console.error('Submission returned unexpected status:', result.status); // Debug log
-                        }}
-                    }} catch (err) {{
-                        console.error('Error during form submission fetch:', err); // More specific debug log
                         generalErrorDiv.classList.remove('hidden');
                         generalErrorMessageSpan.textContent = 'A network error occurred. Please try again.';
                     }} finally {{
