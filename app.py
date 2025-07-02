@@ -66,6 +66,22 @@ class SMSVerificationInput(BaseModel):
     submission_id: str
     code: str
 
+@app.get("/form/{study_id}", response_class=HTMLResponse)
+async def get_study_form(study_id: str):
+    try:
+        study_config = load_study_config(study_id)
+        if not study_config: # This path should ideally not be hit with direct FileNotFoundError/ImportError
+            raise HTTPException(status_code=404, detail=f"Study form '{study_id}' not found or configured (unknown reason).")
+
+        html_content = generate_html_form(study_config, study_id)
+        return HTMLResponse(content=html_content)
+    except (FileNotFoundError, ImportError, SyntaxError) as e:
+        raise HTTPException(status_code=500, detail=f"Server configuration error for study '{study_id}': {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred while loading form for '{study_id}': {e}")
+    html_content = generate_html_form(study_config, study_id)
+    return HTMLResponse(content=html_content)
+
 # NEW ENDPOINT: Dynamic Thank You Page
 @app.get("/form/{study_id}/thank-you", response_class=HTMLResponse)
 async def thank_you_page(study_id: str, status: Optional[str] = "qualified", message: Optional[str] = "Your submission has been received."):
@@ -259,3 +275,4 @@ async def verify_code(sms_input: SMSVerificationInput):
     else:
         # Code did not match
         return {"status": "invalid_code", "message": "❌ That code doesn't match. Please try again."}
+        
